@@ -13,13 +13,87 @@
 <script type="module">
 import * as THREE from 'three';
 import * as K from '../viewer/kinematics.js';
-import { Ex60Scene } from '../viewer/model.js';
+import { Ex60Scene, studioEnvironment } from '../viewer/model.js';
 
 try {
   const response = await fetch('../data/ex60_spec.json');
   if (!response.ok) throw new Error(`Spec fetch failed: ${response.status}`);
   const spec = await response.json();
   const car = new Ex60Scene(spec);
+  const refinement = spec.visual_reconstruction.exterior_refinement.value;
+  const hood = car.root.getObjectByName('sculpted_hood');
+  const hoodVertices = hood.geometry.getAttribute('position');
+  const hoodStride = refinement.deck_rows + 1;
+  let maxCrown = 0;
+  for (let i = 0; i < hoodVertices.count; i += hoodStride) {
+    const center = i + refinement.deck_rows / 2;
+    maxCrown = Math.max(maxCrown, hoodVertices.getZ(center) - hoodVertices.getZ(i));
+  }
+  if (maxCrown < 30 || hoodVertices.count < 400 ||
+      hoodVertices.count >= hood.geometry.index.count / 2) {
+    throw new Error('Hood curvature/shared-vertex topology regressed.');
+  }
+  if (hoodVertices.getX(0) - hoodVertices.getX(refinement.deck_rows / 2) < 40) {
+    throw new Error('Rounded hood leading-edge planform regressed.');
+  }
+  const fasciaVertices = car.root.getObjectByName('front_fascia').geometry.getAttribute('position');
+  for (let i = 0; i <= refinement.deck_rows; i++) {
+    const fascia = new THREE.Vector3().fromBufferAttribute(fasciaVertices, i * (refinement.end_rows + 1) + refinement.end_rows);
+    const leadingEdge = new THREE.Vector3().fromBufferAttribute(hoodVertices, i);
+    if (fascia.distanceTo(leadingEdge) > 0.05) throw new Error('Nose/hood leading seam is open.');
+  }
+  for (const [paneName, meshName, atEnd] of [
+    ['windshield', 'sculpted_hood', true], ['rear_window', 'liftgate_upper_shoulder', false],
+  ]) {
+    const corners = spec.visual_reconstruction.glazing.find((p) => p.name === paneName).points;
+    const vertices = car.root.getObjectByName(meshName).geometry.getAttribute('position');
+    const offset = atEnd ? vertices.count - hoodStride : 0;
+    for (const corner of paneName === 'windshield' ? corners.slice(0, 2) : corners.slice(2)) {
+      let seamError = Infinity;
+      for (let row = 0; row < refinement.deck_rows; row++) {
+        const i = offset + row;
+        if (corner[1] < vertices.getY(i) || corner[1] > vertices.getY(i + 1)) continue;
+        const t = (corner[1] - vertices.getY(i)) / (vertices.getY(i + 1) - vertices.getY(i));
+        seamError = Math.abs(corner[2] - THREE.MathUtils.lerp(vertices.getZ(i), vertices.getZ(i + 1), t));
+      }
+      if (seamError > 3) throw new Error(`Open glazing/deck seam: ${paneName}`);
+    }
+  }
+  for (const side of [-1, 1]) {
+    const panel = car.root.getObjectByName(`painted_side_panel_${side}`);
+    const vertices = panel.geometry.getAttribute('position'), stride = refinement.side_rows + 1;
+    if (vertices.count >= panel.geometry.index.count / 2) throw new Error('Side normals are no longer shared.');
+    const edgeMap = new Map();
+    for (let i = stride - 1; i < vertices.count; i += stride) {
+      edgeMap.set(vertices.getX(i), new THREE.Vector3().fromBufferAttribute(vertices, i));
+    }
+    for (let i = side < 0 ? 0 : refinement.deck_rows; i < hoodVertices.count; i += hoodStride) {
+      const p = new THREE.Vector3().fromBufferAttribute(hoodVertices, i);
+      if (!edgeMap.has(p.x) || edgeMap.get(p.x).distanceTo(p) > 0.05) {
+        throw new Error('Hood/shoulder seam is open.');
+      }
+    }
+    let lowerDoorSculpt = 0;
+    for (let i = 0; i < vertices.count; i += stride) {
+      if (vertices.getX(i) < 1200 || vertices.getX(i) > 2000) continue;
+      const topWidth = Math.abs(vertices.getY(i + stride - 1));
+      for (let row = 1; row < stride - 1; row++) {
+        lowerDoorSculpt = Math.max(lowerDoorSculpt, topWidth - Math.abs(vertices.getY(i + row)));
+      }
+    }
+    if (lowerDoorSculpt < 25) throw new Error('Lower door concavity regressed.');
+  }
+  const roofVertices = [];
+  car.layers.body_roof.traverse((object) => {
+    if (!object.name.startsWith('fitted_roof_surround_')) return;
+    const p = object.geometry.getAttribute('position');
+    for (let i = 0; i < p.count; i++) roofVertices.push(new THREE.Vector3().fromBufferAttribute(p, i));
+  });
+  for (const corner of spec.visual_reconstruction.glazing.find((p) => p.name === 'panoramic_roof').points) {
+    if (Math.min(...roofVertices.map((p) => p.distanceTo(new THREE.Vector3(...corner)))) > 0.05) {
+      throw new Error('Panoramic aperture/roof seam is open.');
+    }
+  }
   const inspection = spec.visual_reconstruction.inspection_transparency.value;
   for (const side of [-1, 1]) {
     const panel = car.root.getObjectByName(`painted_side_panel_${side}`);
@@ -44,16 +118,18 @@ try {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0xe5e7ea);
   scene.add(car.root, new THREE.HemisphereLight(0xffffff, 0x606574, 2));
-  const sun = new THREE.DirectionalLight(0xffffff, 3);
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
   sun.position.set(-3, 6, 4);
   scene.add(sun);
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  scene.environment = studioEnvironment(renderer, spec);
   renderer.setSize(innerWidth, innerHeight);
   document.body.appendChild(renderer.domElement);
   const metrics = {};
   for (const name of Object.keys(spec.manikins)) {
     car.update(K.designState(spec), name);
     metrics[name] = K.ergoMetrics(spec, K.designState(spec), name);
+    if (!Object.values(metrics[name]).every(Number.isFinite)) throw new Error(`Non-finite metrics: ${name}`);
   }
   const closeVector = (actual, expected, label) => {
     if (actual.distanceTo(new THREE.Vector3(...expected)) > 1e-5) throw new Error(label);
@@ -124,6 +200,17 @@ try {
     if (![...position.array].every(Number.isFinite)) {
       throw new Error(`Non-finite vertices: ${object.name}`);
     }
+    const normals = object.geometry.getAttribute('normal');
+    if (normals && ![...normals.array].every(Number.isFinite)) throw new Error(`Non-finite normals: ${object.name}`);
+    if (object.name.startsWith('painted_side_panel') || object.name === 'sculpted_hood' ||
+        object.name === 'front_fascia' || object.name === 'tailgate') {
+      for (let i = 0; i < position.count; i++) {
+        if (position.getX(i) < -1000 || position.getX(i) > 4000 ||
+            Math.abs(position.getY(i)) > 970 || position.getZ(i) < 300 || position.getZ(i) > 1640) {
+          throw new Error(`Exterior shell escaped visual envelope: ${object.name}`);
+        }
+      }
+    }
     object.geometry.computeBoundingSphere();
     if (!Number.isFinite(object.geometry.boundingSphere.radius)) {
       throw new Error(`Invalid bounds: ${object.name}`);
@@ -132,6 +219,7 @@ try {
   const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 100);
   const dashboard = new URLSearchParams(location.search).has('dashboard');
   const details = new URLSearchParams(location.search).has('details');
+  const view = new URLSearchParams(location.search).get('view');
   for (const name of ['r46_zones', 'sightlines', 'eyellipse', 'markers', 'manikin']) {
     car.layers[name].visible = false;
   }
@@ -145,6 +233,15 @@ try {
     }
     camera.position.copy(car.toWorld([2200, -180, 1300]));
     camera.lookAt(car.toWorld([570, 0, 1000]));
+  } else if (view === 'side') {
+    camera.position.copy(car.toWorld([1450, -7800, 1600]));
+    camera.lookAt(car.toWorld([1450, 0, 840]));
+  } else if (view === 'rear') {
+    camera.position.copy(car.toWorld([7600, -4700, 2700]));
+    camera.lookAt(car.toWorld([1850, 0, 850]));
+  } else if (view === 'front') {
+    camera.position.copy(car.toWorld([-4600, -4000, 2400]));
+    camera.lookAt(car.toWorld([1100, 0, 800]));
   } else {
     camera.position.copy(car.toWorld([-5000, -5500, 3300]));
     camera.lookAt(car.toWorld([1400, 0, 800]));
@@ -153,7 +250,10 @@ try {
   const error = renderer.getContext().getError();
   if (error !== 0) throw new Error(`WebGL error: ${error}`);
   const output = document.getElementById('result');
-  output.textContent = JSON.stringify({ status: 'PASS', meshes, metrics });
+  output.textContent = JSON.stringify({
+    status: 'PASS', meshes, rendered_triangles: renderer.info.render.triangles,
+    hood_crown_mm: maxCrown, metrics,
+  });
   output.dataset.status = 'pass';
   if (new URLSearchParams(location.search).has('screenshot')) output.hidden = true;
 } catch (error) {

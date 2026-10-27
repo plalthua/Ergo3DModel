@@ -129,6 +129,45 @@ class VisualModelSpec(unittest.TestCase):
             ))
         self.assertTrue(0 < visual["roof_glass_opacity"] <= 1)
 
+    def test_refined_exterior_profiles_have_bounded_curvature_and_provenance(self):
+        refinement = SPEC["visual_reconstruction"]["exterior_refinement"]
+        self.assertEqual(refinement["confidence"], "estimate")
+        self.assertEqual(refinement["source"], "local_gallery_visual")
+        d = refinement["value"]
+        for key in ("side_rows", "deck_rows", "end_rows", "glass_rows"):
+            self.assertTrue(8 <= d[key] <= 40)
+        self.assertTrue(10 <= d["hood_crown_mm"] <= 40)
+        self.assertTrue(0 < d["fender_flare_mm"] <= 30)
+        self.assertTrue(0 < d["arch_return_mm"] <= 50)
+        profile = d["side_profile"]
+        self.assertEqual([r[0] for r in profile], sorted(r[0] for r in profile))
+        self.assertEqual((profile[0][0], profile[-1][0]), (0, 1))
+        self.assertLess(min(r[1] for r in profile), -30)
+        self.assertEqual(profile[-1][1], 0)
+        roof = d["roof_sections"]
+        self.assertEqual([r[0] for r in roof], sorted(r[0] for r in roof))
+        self.assertTrue(all(600 <= w <= 780 and 1450 <= edge <= center <= 1635
+                            for _, w, edge, center in roof))
+        self.assertTrue(all(math.isfinite(v) for row in roof for v in row))
+        for material in d["materials"].values():
+            self.assertEqual(material["confidence"], "estimate")
+            self.assertEqual(material["source"], refinement["source"])
+            self.assertTrue(0 <= material["value"]["roughness"] <= 1)
+        for part in d["panels"]:
+            self.assertIn(part["material"], d["materials"])
+            self.assertTrue(all(math.isfinite(v) for v in part["center"]))
+            self.assertGreaterEqual(len(part["outline"]), 4)
+            self.assertGreater(part["radius"], 0)
+            area = sum(p[0] * q[1] - q[0] * p[1]
+                       for p, q in zip(part["outline"], part["outline"][1:] + part["outline"][:1]))
+            self.assertGreater(area, 0, part["name"])
+            self.assertEqual([r[0] for r in part["rings"]], sorted(r[0] for r in part["rings"]))
+            for ring in part["rings"]:
+                self.assertEqual(len(ring), 5)
+                self.assertTrue(all(math.isfinite(v) for v in ring))
+                self.assertTrue(0 < ring[1] <= 1 and 0 < ring[2] <= 1)
+        self.assertLessEqual(SPEC["visual_reconstruction"]["glazing_surface_offset_mm"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

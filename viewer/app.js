@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import * as K from './kinematics.js';
-import { Ex60Scene } from './model.js';
+import { Ex60Scene, studioEnvironment } from './model.js';
 
 const SPEC_URL = '../data/ex60_spec.json';
 const SAMPLE_URL = '../data/timelines/sample_timeline.json';
@@ -21,6 +21,7 @@ const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 const scene = new THREE.Scene();
+scene.environment = studioEnvironment(renderer, spec);
 scene.background = new THREE.Color(0x14171b);
 scene.add(new THREE.HemisphereLight(0xdfe8f2, 0x30343a, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
