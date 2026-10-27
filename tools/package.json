@@ -1,0 +1,7 @@
+{
+  "name": "ex60-viewer-build-tools",
+  "private": true,
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "python.testing.unittestEnabled": true,
+  "python.testing.pytestEnabled": false,
+  "python.testing.unittestArgs": ["-s", "tests", "-t", ".", "-p", "test_*.py"],
+  "files.associations": { "*.agent.md": "markdown", "*.prompt.md": "markdown" },
+  "chat.promptFiles": true,
+  "files.exclude": { "**/__pycache__": true }
+}

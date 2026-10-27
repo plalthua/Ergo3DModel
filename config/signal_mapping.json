@@ -1,0 +1,44 @@
+{
+  "_comment": "Maps signal names found in real test-car logs (CAN/DBC, MDF, CSV exports) to canonical ergo3d channels. canonical = raw * scale + offset. Add every naming variant you meet to 'aliases' (matched case-insensitively, first hit wins). Signal names below are placeholders - replace with the real DBC/A2L names from the EX60 test vehicle.",
+  "time": {
+    "aliases": ["timestamp", "time", "time_s", "t", "Time[s]", "Time_ms", "time_ms"],
+    "unit": "auto"
+  },
+  "channels": {
+    "seat_x": {
+      "aliases": ["seat_x", "DrvSeatLgtPosnRaw", "DrvrSeatLgtPosn", "SeatPosnLgt"],
+      "scale": 0.1, "offset": -140, "unit": "mm",
+      "_note": "Sample log: 0.1 mm counts measured from the front-most stop (-140 mm)"
+    },
+    "seat_z": {
+      "aliases": ["seat_z", "DrvSeatHeiPosnRaw", "DrvrSeatHeiPosn"],
+      "scale": 0.1, "offset": -25, "unit": "mm"
+    },
+    "seat_back_angle": {
+      "aliases": ["seat_back_angle", "DrvSeatBackAgDeg", "DrvrSeatBackrestAngle"],
+      "scale": 1.0, "offset": 0, "unit": "deg"
+    },
+    "seat_cushion_tilt": {
+      "aliases": ["seat_cushion_tilt", "DrvSeatCushTiltDeg"],
+      "scale": 1.0, "offset": 0, "unit": "deg"
+    },
+    "steer_tilt": {
+      "aliases": ["steer_tilt", "StrColTiltDeg", "SteerColTiltAngle"],
+      "scale": 1.0, "offset": 0, "unit": "deg"
+    },
+    "steer_telescope": {
+      "aliases": ["steer_telescope", "StrColTelescMm", "SteerColTelescopePosn"],
+      "scale": 1.0, "offset": 0, "unit": "mm"
+    },
+    "steer_wheel_angle": {
+      "aliases": ["steer_wheel_angle", "SteerWhlAgSafe", "SteerWhlAg", "SteeringWheelAngle"],
+      "scale": 1.0, "offset": 0, "unit": "deg"
+    },
+    "mirror_left_yaw":       { "aliases": ["mirror_left_yaw", "MirrLeHorzPosnDeg"],  "scale": 1.0, "offset": 0, "unit": "deg" },
+    "mirror_left_pitch":     { "aliases": ["mirror_left_pitch", "MirrLeVertPosnDeg"], "scale": 1.0, "offset": 0, "unit": "deg" },
+    "mirror_right_yaw":      { "aliases": ["mirror_right_yaw", "MirrRiHorzPosnDeg"],  "scale": 1.0, "offset": 0, "unit": "deg" },
+    "mirror_right_pitch":    { "aliases": ["mirror_right_pitch", "MirrRiVertPosnDeg"], "scale": 1.0, "offset": 0, "unit": "deg" },
+    "mirror_interior_yaw":   { "aliases": ["mirror_interior_yaw", "IntrMirrHorzDeg"],  "scale": 1.0, "offset": 0, "unit": "deg" },
+    "mirror_interior_pitch": { "aliases": ["mirror_interior_pitch", "IntrMirrVertDeg"], "scale": 1.0, "offset": 0, "unit": "deg" }
+  }
+}

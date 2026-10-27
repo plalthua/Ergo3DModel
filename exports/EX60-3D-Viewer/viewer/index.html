@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>EX60 Ergo Coordinator – 3D</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+  </script>
+</head>
+<body>
+  <div id="mobileBar">
+    <button type="button" id="toggleControls" aria-controls="panel" aria-expanded="false">Show controls</button>
+    <button type="button" id="toggleMetrics" aria-controls="metrics" aria-expanded="false">Show metrics</button>
+  </div>
+  <aside id="panel" aria-label="Viewer controls">
+    <header>
+      <h1>EX60 Ergo Coordinator</h1>
+      <div class="sub">Steering · Mirrors · Driver seat</div>
+    </header>
+
+    <section>
+      <h2>Occupant</h2>
+      <label for="manikin">Driver body profile</label>
+      <select id="manikin" aria-describedby="bodyInfo"></select>
+      <div id="bodyInfo" class="muted" aria-live="polite"></div>
+      <details id="bodyCustomization">
+        <summary>Adjust body dimensions</summary>
+        <div id="bodySliders"></div>
+        <button id="resetBody">Reset body dimensions</button>
+      </details>
+      <div class="row">
+        <button id="autoMirrors" title="Set mirror angles to the spec target view for this occupant">Auto-adjust mirrors</button>
+        <button id="resetDesign">Design position</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Test-log replay</h2>
+      <div class="row">
+        <button id="loadSample">Load sample</button>
+        <label class="file">Open timeline…<input type="file" id="timelineFile" accept=".json" /></label>
+      </div>
+      <div id="tlInfo" class="muted">No timeline loaded – sliders are manual.</div>
+      <div class="row">
+        <button id="play" disabled>▶ Play</button>
+        <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>5</option></select>
+        <span id="tlTime" class="mono">0.00 s</span>
+      </div>
+      <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" disabled />
+      <label class="chk"><input type="checkbox" id="followLog" checked /> Drive model from log</label>
+    </section>
+
+    <section>
+      <h2>Adjustments</h2>
+      <div id="sliders"></div>
+    </section>
+
+    <section>
+      <h2>View</h2>
+      <div class="row wrap" id="cams">
+        <button data-cam="iso">Iso</button><button data-cam="side">Side</button><button data-cam="top">Top</button>
+        <button data-cam="front">Front</button><button data-cam="eye">Driver eye</button>
+      </div>
+      <div class="row wrap" id="toggles"></div>
+      <label class="chk"><input type="checkbox" id="mirrorPip" checked /> Mirror views (unmirrored)</label>
+    </section>
+
+    <section>
+      <h2>Export</h2>
+      <div class="row wrap">
+        <button id="exportGlb">GLB model</button><button id="exportPng">Screenshot</button><button id="exportPose">Pose JSON</button>
+      </div>
+    </section>
+
+    <footer class="muted">
+      Geometry is parametric from <code>data/ex60_spec.json</code>. Values marked <em>estimate</em> must be replaced with CAD/measured data.
+      <div id="provenance"></div>
+    </footer>
+  </aside>
+
+  <main id="stage">
+    <canvas id="c"></canvas>
+    <details id="driverMenu" open>
+      <summary>Driver body profiles <span id="selectedBody"></span></summary>
+      <p class="muted">Illustrative estimates, not validated anthropometry. Teen figures do not imply driving eligibility or safety.</p>
+      <div id="driverCards" role="group" aria-label="Select a driver body profile"></div>
+    </details>
+    <div id="pipLabels"></div>
+    <div id="metrics" role="region" aria-label="Ergo metrics"></div>
+    <div id="hint"><span class="desk">Drag: orbit · Right-drag: pan · Wheel: zoom · Drop a timeline .json here</span><span class="touch">One finger: orbit · Two fingers: pinch zoom / pan</span></div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

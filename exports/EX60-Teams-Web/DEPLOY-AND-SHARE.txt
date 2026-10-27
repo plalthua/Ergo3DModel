@@ -1,0 +1,111 @@
+EX60 3D Viewer - Teams Web-Link Deployment Package
+================================================
+
+IMPORTANT: TEAMS FILE SHARING IS NOT WEB HOSTING
+Uploading this ZIP or index.html to a Teams channel Files/Shared folder
+creates a file-download link, not a working interactive website.
+Teams files are stored in SharePoint; its normal document previews do
+not run this application's scripts. Renaming the file or changing the
+sharing link does not fix that restriction.
+
+FOR A WORKING CLICK-TO-VIEW WEB LINK
+1. Upload EX60-Teams-Web.zip to the Teams channel as an IT handoff.
+2. Ask your IT/site administrator to extract the package and publish
+   index.html on an APPROVED HTTPS static website with access restricted
+   to the intended audience. Examples: an existing internal IIS website,
+   an authenticated corporate static web host, or an approved Azure
+   Static Web Apps deployment with organization-controlled access.
+   Do not publish project content to a public or third-party service
+   without authorization. The HTML itself provides no authentication.
+3. The administrator supplies the actual HTTPS URL after deployment.
+   This package does not create a URL, cloud resource or access policy.
+4. Test the URL in a regular browser as an intended recipient, not just
+   as the administrator. The 3D scene and all nine profile cards should
+   appear. Click Load sample, change body profiles and check exports.
+5. Paste the verified HTTPS URL into a channel post. If your tenant
+   offers a Website tab, it can also point to this URL. Availability
+   and embedded-site behavior vary by Teams client and tenant policy;
+   opening the URL in the browser remains the primary supported route.
+
+If the model MUST run directly INSIDE a SharePoint page, ask IT about
+an approved SharePoint Framework (SPFx) web part. That is a separate
+deployment requiring tenant/site administration; this is NOT an SPFx
+package and is NOT a Teams app installation package.
+
+HOSTING REQUIREMENTS (FOR IT)
+- Publish index.html as text/html with UTF-8 encoding, served inline.
+  Do not force a download with Content-Disposition: attachment.
+- After replacing the page, verify recipients receive the new bytes,
+  not a cached old version. Use the host's normal cache invalidation /
+  Cache-Control policy, or publish a versioned URL. Recipients can try
+  Ctrl+F5 on the actual hosted website. This does not enable scripting
+  inside a SharePoint document preview.
+- HTTPS and a modern JavaScript/WebGL-capable browser are required.
+- All application assets, spec, license and synthetic demo data are
+  embedded in index.html. No Python, npm build or backend API is needed.
+- The page uses inline styles and a single classic JavaScript bundle.
+  It does not use import maps, module scripts or data: module URLs.
+  Check your site's Content Security Policy and browser policies for
+  compatibility with inline scripts/styles and WebGL. Do not weaken
+  organization-wide security policies to enable it. If inline scripts
+  are disallowed, request a separate multi-file deployment compatible
+  with the approved policy.
+- The page does not require external CDN or data requests.
+- If embedding in Teams is approved, the host's frame-ancestors /
+  X-Frame-Options and authentication behavior must permit that use.
+  Do not change these protections globally. A normal browser link
+  avoids the embedding requirement.
+- Protect the host with the organization's normal identity/access
+  controls. A Teams link or channel membership does NOT automatically
+  restrict access to a separately hosted website. Do not use a public
+  host for confidential project information.
+- Enable downloads if GLB/PNG/pose export is required. Sandboxed previews
+  and embedded clients may restrict downloading or file import.
+
+NO HOST AVAILABLE?
+Upload this package to Teams Files and share the file link, explaining
+that recipients must download/extract it and open index.html in their
+browser. This is installation-free, but is NOT a web-link-only viewer.
+
+MOBILE AND PHONE BROWSERS
+- The page is responsive: on narrow screens (width <= 900 px or height
+  <= 520 px) the controls become a drawer opened by the "Show controls"
+  button, the metrics and driver body profile menus are collapsed by
+  default, and the 3D scene fills the screen. One finger orbits; two
+  fingers pinch-zoom and pan. Mirror insets start switched off on phones.
+- TESTED: Chrome 3D emulation of 390x844, 360x740 and 844x390 touch
+  viewports (plus 1440x1000 desktop) using the generated HTML. NOT tested
+  on physical iOS/Safari or Android devices; real-device WebGL speed and
+  browser behaviour are not promised. Test on an actual phone first.
+- Teams/SharePoint file previews, including the mobile Teams app preview,
+  cannot run the scripts. A downloaded HTML on a phone is not a supported
+  route; a PC download is the local fallback.
+- RECOMMENDED FOR MOBILE: an authenticated HTTPS host managed by IT.
+  Channel membership does not by itself authorize access to that host.
+  IT must configure Entra ID / SharePoint-based authorization that matches
+  the exact channel membership, including private/shared channel and
+  guest members, and must remove users when membership changes. The page
+  has no client-side login and must not be treated as access control.
+WHAT IS INCLUDED
+- index.html: self-contained, interactive 3D viewer (~1.2 MB).
+- This deployment guide.
+- CHANNEL-POST-TEMPLATE.txt: copy after replacing its URL placeholder.
+- SHA256SUMS.txt: checksums for the three files above.
+
+The HTML contains the seat, steering, mirrors, nine body profiles,
+body customization controls, synthetic demo replay, GLB/PNG/pose export,
+model spec and Three.js license. It excludes real vehicle test logs,
+private reports, confidential CAD, browser profiles and agent settings.
+No deployment, external upload, Teams post or share link was created.
+
+All interior geometry and body profiles are illustrative estimates,
+not validated Volvo CAD or population anthropometry. Teenage examples
+are not driving-eligibility or safety/compliance assessments.
+
+UPDATING
+This is a snapshot. Developers install the build-only bundler with
+npm --prefix tools install (or supply native esbuild on PATH or via
+ESBUILD_BINARY_PATH). After project changes, rebuild the single HTML
+with tools\refresh_exports.ps1 (it also syncs both packages, checksums and ZIPs; or run tools\build_shareable_html.py, copy exports\EX60-3D-Viewer.html to this
+folder as index.html, refresh checksums and recreate the ZIP. Ask the
+administrator to redeploy and verify the updated site.

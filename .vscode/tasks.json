@@ -1,0 +1,61 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ergo3d: serve viewer",
+      "type": "shell",
+      "command": "python -u -m ergo3d serve --port 8060",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "ergo3d",
+        "pattern": { "regexp": "^__never__$" },
+        "background": { "activeBegin": true, "beginsPattern": "^Serving", "endsPattern": "^Serving" }
+      },
+      "presentation": { "panel": "dedicated" }
+    },
+    {
+      "label": "ergo3d: generate sample logs",
+      "type": "shell",
+      "command": "python -m ergo3d sample",
+      "problemMatcher": []
+    },
+    {
+      "label": "ergo3d: sync sample logs",
+      "type": "shell",
+      "command": "python -m ergo3d sync data/sample_logs/ex60_seat_ecu.csv data/sample_logs/ex60_body_ecu.csv@-0.25 -o data/timelines/sample_timeline.json",
+      "dependsOn": "ergo3d: generate sample logs",
+      "problemMatcher": []
+    },
+    {
+      "label": "ergo3d: sync test logs",
+      "type": "shell",
+      "command": "python -m ergo3d sync ${input:logs} --rate ${input:rate} -o data/timelines/${input:timelineName}.json",
+      "problemMatcher": []
+    },
+    {
+      "label": "ergo3d: report",
+      "type": "shell",
+      "command": "python -m ergo3d report data/timelines/${input:timelineName}.json --manikin ${input:manikin}",
+      "problemMatcher": []
+    },
+    {
+      "label": "ergo3d: design metrics",
+      "type": "shell",
+      "command": "python -m ergo3d design",
+      "problemMatcher": []
+    },
+    {
+      "label": "ergo3d: run tests",
+      "type": "shell",
+      "command": "python -m unittest discover -s tests -t . -v",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    { "id": "logs", "type": "promptString", "description": "Log files (CSV/MF4), space separated; append @seconds to shift a file's clock" },
+    { "id": "rate", "type": "promptString", "description": "Output rate (Hz)", "default": "10" },
+    { "id": "timelineName", "type": "promptString", "description": "Timeline name (without .json)", "default": "sample_timeline" },
+    { "id": "manikin", "type": "pickString", "description": "Illustrative driver profile", "options": ["p5_female", "p50_male", "p95_male", "adult_medium_female", "adult_slim", "adult_broad", "adult_large_body", "teen_small", "teen_tall"], "default": "p50_male" }
+  ]
+}

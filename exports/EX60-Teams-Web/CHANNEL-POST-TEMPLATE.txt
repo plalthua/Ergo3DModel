@@ -1,0 +1,22 @@
+EX60 Driver Workplace - Interactive 3D Viewer
+
+Open the model:
+[REPLACE WITH THE VERIFIED, ACCESS-CONTROLLED HTTPS URL FROM IT]
+
+Use a modern browser (Edge, Chrome or Firefox) with WebGL enabled.
+No installation or Python is required.
+
+Select a driver body profile from the visual menu, adjust body dimensions
+or seat/steering/mirrors, and click Load sample for synthetic demo replay.
+
+Phones/tablets: use the same HTTPS link in the mobile browser (not the Teams file preview). Tap Show controls for settings. Verified only in browser emulation; report problems on your device.
+
+All interior geometry and body profiles are illustrative estimates.
+Teenage figures do not imply driving eligibility or a safety assessment.
+The demo does not contain real vehicle test logs.
+
+Access is controlled by the hosting site, not by this channel post.
+Contact the site owner if the link does not grant you access.
+
+NOTE TO SENDER: Replace the placeholder only after IT has deployed and
+tested the site. A Teams/SharePoint file-download link is not equivalent.

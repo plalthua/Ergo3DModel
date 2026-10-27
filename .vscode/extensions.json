@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "github.copilot-chat",
+    "ms-vscode.live-server",
+    "mechatroner.rainbow-csv",
+    "cesium.gltf-vscode"
+  ]
+}

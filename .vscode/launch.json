@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ergo3d: sync sample logs",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "ergo3d",
+      "args": ["sync", "data/sample_logs/ex60_seat_ecu.csv", "data/sample_logs/ex60_body_ecu.csv@-0.25", "-o", "data/timelines/sample_timeline.json"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ergo3d: report (p50)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "ergo3d",
+      "args": ["report", "data/timelines/sample_timeline.json", "--manikin", "p50_male"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Viewer (Edge)",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://127.0.0.1:8060/viewer/index.html",
+      "webRoot": "${workspaceFolder}/viewer",
+      "preLaunchTask": "ergo3d: serve viewer"
+    }
+  ]
+}

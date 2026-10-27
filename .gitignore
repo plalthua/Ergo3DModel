@@ -1,0 +1,10 @@
+__pycache__/
+node_modules/
+*.pyc
+.venv/
+# Real test-vehicle data and derived results stay local
+data/logs/
+data/timelines/*
+!data/timelines/sample_timeline.json
+reports/*
+!reports/.gitkeep

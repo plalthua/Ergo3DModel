@@ -1,0 +1,682 @@
+{
+  "meta": {
+    "model": "Volvo EX60 (SPA3), LHD driver position",
+    "spec_version": "0.1.0",
+    "units": "mm and degrees",
+    "coordinate_system": "Vehicle frame: origin at front axle centre projected to ground. +X rearward, +Y to the right (driver side LHD = -Y), +Z up.",
+    "confidence_levels": {
+      "official": "Published by Volvo Cars (press kit, spec sheet, owner's manual)",
+      "press": "Published by reputable third-party press / encyclopedic source",
+      "proxy": "Taken from a sibling Volvo/Polestar model as a stand-in",
+      "estimate": "Illustrative engineering assumption, not validated Volvo or population anthropometry; replace with CAD/measured data"
+    },
+    "sources": [
+      {
+        "id": "illustrative_bodies",
+        "title": "Project engineering assumptions for illustrative driver skeletons and body shapes; not a population dataset or Volvo measurement",
+        "url": null,
+        "retrieved": null
+      },
+      {
+        "id": "wiki",
+        "title": "Volvo EX60 - Wikipedia",
+        "url": "https://en.wikipedia.org/wiki/Volvo_EX60",
+        "retrieved": "2026-10-23"
+      },
+      {
+        "id": "volvo",
+        "title": "Volvo Cars - EX60 product pages (block automated retrieval; verify manually)",
+        "url": "https://www.volvocars.com/intl/cars/ex60-electric/",
+        "retrieved": null
+      },
+      {
+        "id": "arstechnica",
+        "title": "Ars Technica - Here's Volvo's new EX60 (Jan 2026)",
+        "url": "https://arstechnica.com/cars/2026/01/heres-volvos-new-ex60-60000-electric-midsize-suv/",
+        "retrieved": "2026-10-23"
+      },
+      {
+        "id": "caranddriver_ex60",
+        "title": "Car and Driver - 2027 Volvo EX60 revealed",
+        "url": "https://www.caranddriver.com/news/a70059359/2027-volvo-ex60-revealed/",
+        "retrieved": "2026-10-23"
+      },
+      {
+        "id": "caranddriver_ex90",
+        "title": "Car and Driver - Volvo EX90 specs (proxy)",
+        "url": "https://www.caranddriver.com/volvo/ex90/specs",
+        "retrieved": "2026-10-23"
+      },
+      {
+        "id": "caranddriver_xc60",
+        "title": "Car and Driver - Volvo XC60 specs (proxy)",
+        "url": "https://www.caranddriver.com/volvo/xc60/specs",
+        "retrieved": "2026-10-23"
+      },
+      {
+        "id": "motortrend_ps3",
+        "title": "MotorTrend - Polestar 3 specs (proxy)",
+        "url": "https://www.motortrend.com/cars/polestar/3/specs",
+        "retrieved": "2026-10-23"
+      }
+    ],
+    "data_gaps": [
+      "All driver body profiles, including percentile-labelled adults and teenage examples, are illustrative estimates. Obtain validated anthropometry or individual measurements; no preset represents every person of an age, sex or body type.",
+      "Interior room (headroom, legroom, shoulder/hip room), H-point height: not published for EX60 - all seat/package coordinates are estimates.",
+      "Seat adjustment ranges, steering wheel diameter and tilt/telescope ranges: not published - estimates.",
+      "Mirror glass sizes and positions: not published - estimates.",
+      "Retry Volvo spec sheet / owner's manual (support.volvocars.com) and first-drive reviews (Autocar, What Car?) manually, or replace with CAD/measured data from the test vehicle."
+    ]
+  },
+  "vehicle": {
+    "length": {
+      "value": 4803,
+      "confidence": "press",
+      "source": "wiki"
+    },
+    "width_excl_mirrors": {
+      "value": 1899,
+      "confidence": "press",
+      "source": "wiki"
+    },
+    "height": {
+      "value": 1635,
+      "confidence": "press",
+      "source": "wiki",
+      "note": "Ars Technica quotes 1638 mm; wheelbase 2969 mm"
+    },
+    "wheelbase": {
+      "value": 2970,
+      "confidence": "press",
+      "source": "wiki"
+    },
+    "front_overhang": {
+      "value": 900,
+      "confidence": "estimate"
+    },
+    "track_front": {
+      "value": 1640,
+      "confidence": "estimate"
+    },
+    "track_rear": {
+      "value": 1650,
+      "confidence": "estimate"
+    },
+    "wheel_diameter": {
+      "value": 740,
+      "confidence": "estimate"
+    },
+    "tyre_width": {
+      "value": 255,
+      "confidence": "estimate"
+    },
+    "floor_z": {
+      "value": 400,
+      "confidence": "estimate",
+      "note": "Driver heel/floor height above ground (cell-to-body battery raises floor)"
+    },
+    "roof_inner_z": {
+      "value": 1555,
+      "confidence": "estimate",
+      "note": "Headliner height above ground at driver head position"
+    },
+    "side_profile_xz": {
+      "confidence": "estimate",
+      "note": "Simplified body side silhouette (x, z) used only for visual context",
+      "points": [
+        [
+          -900,
+          330
+        ],
+        [
+          -905,
+          560
+        ],
+        [
+          -870,
+          720
+        ],
+        [
+          -780,
+          820
+        ],
+        [
+          -300,
+          900
+        ],
+        [
+          470,
+          1010
+        ],
+        [
+          1250,
+          1545
+        ],
+        [
+          1700,
+          1630
+        ],
+        [
+          2900,
+          1610
+        ],
+        [
+          3450,
+          1500
+        ],
+        [
+          3790,
+          1180
+        ],
+        [
+          3880,
+          900
+        ],
+        [
+          3903,
+          560
+        ],
+        [
+          3880,
+          330
+        ]
+      ]
+    },
+    "beltline_z": {
+      "value": 1090,
+      "confidence": "estimate"
+    },
+    "windshield": {
+      "base": [
+        470,
+        1010
+      ],
+      "top": [
+        1250,
+        1545
+      ],
+      "confidence": "estimate"
+    },
+    "cd": {
+      "value": 0.26,
+      "confidence": "press",
+      "source": "caranddriver_ex60"
+    }
+  },
+  "seat": {
+    "sgrp": {
+      "x": 1330,
+      "y": -370,
+      "z": 700,
+      "confidence": "estimate",
+      "note": "Seating Reference Point (design H-point) at design track position"
+    },
+    "rail_angle_deg": {
+      "value": 3.0,
+      "confidence": "estimate",
+      "note": "Rails rise toward the front"
+    },
+    "fore_aft_mm": {
+      "min": -140,
+      "max": 100,
+      "design": 0,
+      "confidence": "estimate",
+      "note": "Positive = rearward of SgRP"
+    },
+    "height_mm": {
+      "min": -25,
+      "max": 40,
+      "design": 0,
+      "confidence": "estimate"
+    },
+    "back_angle_deg": {
+      "min": 12,
+      "max": 45,
+      "design": 25,
+      "confidence": "estimate",
+      "note": "Torso angle from vertical (SAE A40)"
+    },
+    "cushion_tilt_deg": {
+      "min": -2,
+      "max": 8,
+      "design": 3,
+      "confidence": "estimate"
+    },
+    "cushion": {
+      "length": 520,
+      "width": 540,
+      "thickness": 120
+    },
+    "backrest": {
+      "height": 640,
+      "width": 520,
+      "thickness": 110
+    },
+    "headrest": {
+      "height": 200,
+      "width": 280,
+      "thickness": 110
+    }
+  },
+  "steering": {
+    "wheel_center_design": {
+      "x": 900,
+      "y": -370,
+      "z": 1030,
+      "confidence": "estimate"
+    },
+    "column_angle_deg": {
+      "value": 23.0,
+      "confidence": "estimate",
+      "note": "Column axis above horizontal; wheel plane is perpendicular"
+    },
+    "pivot_to_wheel_mm": {
+      "value": 380,
+      "confidence": "estimate",
+      "note": "Tilt pivot distance along column from wheel centre at design telescope"
+    },
+    "tilt_deg": {
+      "min": -3.5,
+      "max": 3.5,
+      "design": 0,
+      "confidence": "estimate",
+      "note": "Positive = wheel up"
+    },
+    "telescope_mm": {
+      "min": -30,
+      "max": 30,
+      "design": 0,
+      "confidence": "estimate",
+      "note": "Positive = toward driver"
+    },
+    "wheel_angle_deg": {
+      "min": -540,
+      "max": 540,
+      "design": 0
+    },
+    "rim_diameter": {
+      "value": 370,
+      "confidence": "estimate"
+    },
+    "rim_thickness": {
+      "value": 32,
+      "confidence": "estimate"
+    },
+    "hub_radius": {
+      "value": 85,
+      "confidence": "estimate"
+    }
+  },
+  "mirrors": {
+    "left": {
+      "glass_center": {
+        "x": 720,
+        "y": -1010,
+        "z": 1180,
+        "confidence": "estimate"
+      },
+      "glass_size": {
+        "w": 200,
+        "h": 125
+      },
+      "yaw_deg": {
+        "min": 0,
+        "max": 42,
+        "design": 21
+      },
+      "pitch_deg": {
+        "min": -10,
+        "max": 15,
+        "design": 5
+      },
+      "target_view": {
+        "outward_deg": 2.0,
+        "elevation_deg": -1.0,
+        "note": "Reflected sightline slightly outward of the body side, near horizon"
+      }
+    },
+    "right": {
+      "glass_center": {
+        "x": 720,
+        "y": 1010,
+        "z": 1180,
+        "confidence": "estimate"
+      },
+      "glass_size": {
+        "w": 200,
+        "h": 125
+      },
+      "yaw_deg": {
+        "min": -52,
+        "max": -10,
+        "design": -31
+      },
+      "pitch_deg": {
+        "min": -10,
+        "max": 15,
+        "design": 3
+      },
+      "target_view": {
+        "outward_deg": 2.0,
+        "elevation_deg": -1.5
+      }
+    },
+    "interior": {
+      "glass_center": {
+        "x": 1170,
+        "y": 0,
+        "z": 1440,
+        "confidence": "estimate"
+      },
+      "glass_size": {
+        "w": 250,
+        "h": 65
+      },
+      "yaw_deg": {
+        "min": -50,
+        "max": -10,
+        "design": -31
+      },
+      "pitch_deg": {
+        "min": -22,
+        "max": 5,
+        "design": -9
+      },
+      "target_view": {
+        "outward_deg": 0.0,
+        "elevation_deg": -2.0,
+        "note": "Centred on rear window"
+      }
+    }
+  },
+  "displays": {
+    "center": {
+      "diag_in": 15.1,
+      "w": 330,
+      "h": 200,
+      "center": {
+        "x": 690,
+        "y": -20,
+        "z": 1080
+      },
+      "tilt_deg": 18,
+      "confidence": "press (size) / estimate (position)",
+      "source": "wiki"
+    },
+    "driver": {
+      "w": 300,
+      "h": 70,
+      "center": {
+        "x": 640,
+        "y": -370,
+        "z": 1075
+      },
+      "tilt_deg": 20,
+      "confidence": "estimate",
+      "note": "Thin instrument cluster mounted above dashboard"
+    }
+  },
+  "pedals": {
+    "accelerator_heel_point": {
+      "x": 480,
+      "y": -330,
+      "z": 400,
+      "confidence": "estimate"
+    }
+  },
+  "manikins": {
+    "p5_female": {
+      "label": "5th pct female",
+      "category": "Adult",
+      "description": "Small adult female example; percentile label is approximate.",
+      "confidence": "estimate",
+      "source": "illustrative_bodies",
+      "body": {
+        "torso_depth": 180, "waist_half_width": 130, "pelvis_depth": 180,
+        "upper_arm_radius": 31, "forearm_radius": 26, "thigh_radius": 51, "calf_radius": 36,
+        "neck_radius": 29, "head_depth": 175, "head_half_width": 70, "head_below_eye": 100,
+        "foot_length": 220, "foot_radius": 26
+      },
+      "h_to_eye": 610,
+      "eye_forward": 235,
+      "h_to_shoulder": 470,
+      "upper_arm": 280,
+      "forearm_hand": 360,
+      "thigh": 390,
+      "shank": 400,
+      "ankle_height": 75,
+      "head_above_eye": 105,
+      "shoulder_half_width": 175,
+      "hip_half_width": 85
+    },
+    "p50_male": {
+      "label": "50th pct male",
+      "category": "Adult",
+      "description": "Medium adult male example; percentile label is approximate.",
+      "confidence": "estimate",
+      "source": "illustrative_bodies",
+      "body": {
+        "torso_depth": 220, "waist_half_width": 155, "pelvis_depth": 210,
+        "upper_arm_radius": 40, "forearm_radius": 33, "thigh_radius": 62, "calf_radius": 45,
+        "neck_radius": 35, "head_depth": 190, "head_half_width": 78, "head_below_eye": 115,
+        "foot_length": 250, "foot_radius": 30
+      },
+      "h_to_eye": 700,
+      "eye_forward": 265,
+      "h_to_shoulder": 540,
+      "upper_arm": 330,
+      "forearm_hand": 420,
+      "thigh": 432,
+      "shank": 440,
+      "ankle_height": 80,
+      "head_above_eye": 115,
+      "shoulder_half_width": 200,
+      "hip_half_width": 95
+    },
+    "p95_male": {
+      "label": "95th pct male",
+      "category": "Adult",
+      "description": "Tall adult male example; percentile label is approximate.",
+      "confidence": "estimate",
+      "source": "illustrative_bodies",
+      "body": {
+        "torso_depth": 240, "waist_half_width": 170, "pelvis_depth": 230,
+        "upper_arm_radius": 44, "forearm_radius": 36, "thigh_radius": 68, "calf_radius": 49,
+        "neck_radius": 38, "head_depth": 200, "head_half_width": 83, "head_below_eye": 120,
+        "foot_length": 280, "foot_radius": 33
+      },
+      "h_to_eye": 775,
+      "eye_forward": 295,
+      "h_to_shoulder": 590,
+      "upper_arm": 365,
+      "forearm_hand": 460,
+      "thigh": 470,
+      "shank": 480,
+      "ankle_height": 85,
+      "head_above_eye": 120,
+      "shoulder_half_width": 215,
+      "hip_half_width": 105
+    },
+    "adult_medium_female": {
+      "label": "Medium adult female",
+      "category": "Adult",
+      "description": "Medium-height adult with wider hips and narrower shoulders.",
+      "confidence": "estimate", "source": "illustrative_bodies",
+      "h_to_eye": 655, "eye_forward": 250, "h_to_shoulder": 505,
+      "upper_arm": 305, "forearm_hand": 385, "thigh": 415, "shank": 420,
+      "ankle_height": 78, "head_above_eye": 110, "shoulder_half_width": 185, "hip_half_width": 110,
+      "body": {
+        "torso_depth": 205, "waist_half_width": 145, "pelvis_depth": 215,
+        "upper_arm_radius": 35, "forearm_radius": 28, "thigh_radius": 62, "calf_radius": 41,
+        "neck_radius": 31, "head_depth": 180, "head_half_width": 73, "head_below_eye": 105,
+        "foot_length": 235, "foot_radius": 28
+      }
+    },
+    "adult_slim": {
+      "label": "Slim adult",
+      "category": "Adult",
+      "description": "Medium-height adult with a narrow, slender body structure.",
+      "confidence": "estimate", "source": "illustrative_bodies",
+      "h_to_eye": 700, "eye_forward": 265, "h_to_shoulder": 540,
+      "upper_arm": 330, "forearm_hand": 420, "thigh": 432, "shank": 440,
+      "ankle_height": 80, "head_above_eye": 115, "shoulder_half_width": 175, "hip_half_width": 85,
+      "body": {
+        "torso_depth": 165, "waist_half_width": 120, "pelvis_depth": 165,
+        "upper_arm_radius": 28, "forearm_radius": 24, "thigh_radius": 46, "calf_radius": 33,
+        "neck_radius": 29, "head_depth": 185, "head_half_width": 73, "head_below_eye": 110,
+        "foot_length": 250, "foot_radius": 27
+      }
+    },
+    "adult_broad": {
+      "label": "Broad-shouldered adult",
+      "category": "Adult",
+      "description": "Medium-height adult with broad shoulders and thicker limbs.",
+      "confidence": "estimate", "source": "illustrative_bodies",
+      "h_to_eye": 700, "eye_forward": 265, "h_to_shoulder": 540,
+      "upper_arm": 330, "forearm_hand": 420, "thigh": 432, "shank": 440,
+      "ankle_height": 80, "head_above_eye": 115, "shoulder_half_width": 245, "hip_half_width": 110,
+      "body": {
+        "torso_depth": 265, "waist_half_width": 175, "pelvis_depth": 235,
+        "upper_arm_radius": 56, "forearm_radius": 42, "thigh_radius": 76, "calf_radius": 51,
+        "neck_radius": 44, "head_depth": 195, "head_half_width": 80, "head_below_eye": 115,
+        "foot_length": 260, "foot_radius": 32
+      }
+    },
+    "adult_large_body": {
+      "label": "Larger-body adult",
+      "category": "Adult",
+      "description": "Medium-height adult with a fuller torso, wider hips and larger limb girth.",
+      "confidence": "estimate", "source": "illustrative_bodies",
+      "h_to_eye": 700, "eye_forward": 265, "h_to_shoulder": 540,
+      "upper_arm": 330, "forearm_hand": 420, "thigh": 432, "shank": 440,
+      "ankle_height": 80, "head_above_eye": 115, "shoulder_half_width": 225, "hip_half_width": 145,
+      "body": {
+        "torso_depth": 340, "waist_half_width": 235, "pelvis_depth": 310,
+        "upper_arm_radius": 60, "forearm_radius": 43, "thigh_radius": 90, "calf_radius": 57,
+        "neck_radius": 44, "head_depth": 200, "head_half_width": 83, "head_below_eye": 120,
+        "foot_length": 255, "foot_radius": 34
+      }
+    },
+    "teen_small": {
+      "label": "Teenager - smaller build",
+      "category": "Teenage",
+      "description": "Illustrative smaller teenage figure; not an age percentile, driving eligibility or safety assessment.",
+      "confidence": "estimate", "source": "illustrative_bodies",
+      "h_to_eye": 580, "eye_forward": 220, "h_to_shoulder": 440,
+      "upper_arm": 265, "forearm_hand": 335, "thigh": 365, "shank": 375,
+      "ankle_height": 70, "head_above_eye": 100, "shoulder_half_width": 155, "hip_half_width": 75,
+      "body": {
+        "torso_depth": 155, "waist_half_width": 110, "pelvis_depth": 150,
+        "upper_arm_radius": 25, "forearm_radius": 22, "thigh_radius": 43, "calf_radius": 30,
+        "neck_radius": 26, "head_depth": 165, "head_half_width": 66, "head_below_eye": 95,
+        "foot_length": 210, "foot_radius": 24
+      }
+    },
+    "teen_tall": {
+      "label": "Teenager - taller build",
+      "category": "Teenage",
+      "description": "Illustrative taller teenage figure; not an age percentile, driving eligibility or safety assessment.",
+      "confidence": "estimate", "source": "illustrative_bodies",
+      "h_to_eye": 665, "eye_forward": 250, "h_to_shoulder": 510,
+      "upper_arm": 310, "forearm_hand": 395, "thigh": 435, "shank": 450,
+      "ankle_height": 78, "head_above_eye": 110, "shoulder_half_width": 178, "hip_half_width": 85,
+      "body": {
+        "torso_depth": 175, "waist_half_width": 125, "pelvis_depth": 175,
+        "upper_arm_radius": 30, "forearm_radius": 25, "thigh_radius": 49, "calf_radius": 35,
+        "neck_radius": 29, "head_depth": 180, "head_half_width": 72, "head_below_eye": 105,
+        "foot_length": 245, "foot_radius": 27
+      }
+    }
+  },
+  "manikin_rendering": {
+    "confidence": "estimate",
+    "source": "illustrative_bodies",
+    "neck_base_offset": 20,
+    "head_eye_offset_ratio": 0.55,
+    "neck_head_depth_ratio": 0.2,
+    "neck_head_height_ratio": -0.55,
+    "left_ankle_offset": [60, -110, 20],
+    "foot_tip_height_left": 30,
+    "foot_tip_height_right": 70,
+    "eye_marker_radius": 14,
+    "chest_position_ratio": 0.68,
+    "chest_half_height_ratio": 0.38,
+    "abdomen_position_ratio": 0.3,
+    "abdomen_half_height_ratio": 0.35,
+    "customization": [
+      { "id": "size", "label": "Overall body size", "min": 85, "max": 115, "step": 1, "paths": ["*"] },
+      { "id": "shoulders", "label": "Shoulder breadth", "min": 75, "max": 130, "step": 1, "paths": ["shoulder_half_width"] },
+      { "id": "hips", "label": "Hip spacing", "min": 75, "max": 150, "step": 1, "paths": ["hip_half_width"] },
+      { "id": "depth", "label": "Torso / pelvis depth", "min": 70, "max": 150, "step": 1, "paths": ["body.torso_depth", "body.pelvis_depth"] },
+      { "id": "girth", "label": "Limb girth", "min": 70, "max": 140, "step": 1, "paths": ["body.upper_arm_radius", "body.forearm_radius", "body.thigh_radius", "body.calf_radius", "body.neck_radius"] }
+    ]
+  },
+  "eyellipse_95": {
+    "x": 199,
+    "y": 105,
+    "z": 86,
+    "note": "Approximate SAE J941 95th percentile eyellipse axis lengths"
+  },
+  "ergo_limits": {
+    "hpoint_to_wheel_mm": {
+      "min": 400,
+      "max": 600
+    },
+    "cluster_sightline_margin_mm": {
+      "min": 5
+    },
+    "headroom_mm": {
+      "min": 30
+    },
+    "mirror_view_tolerance_deg": {
+      "max": 3.0
+    }
+  },
+  "equipment": {
+    "seat": {
+      "value": "Power driver seat with memory; proxy: EX90 8-way power + 4-way power lumbar + memory; Polestar 3 adds cushion tilt and manual cushion extension",
+      "confidence": "proxy",
+      "source": [
+        "caranddriver_ex90",
+        "motortrend_ps3"
+      ]
+    },
+    "steering_column": {
+      "value": "Proxy: EX90 power tilt/telescope column with auto tilt-away for entry/exit and memory linked to driver profile",
+      "confidence": "proxy",
+      "source": "caranddriver_ex90",
+      "note": "Conventional EPAS assumed; no steer-by-wire claim found"
+    },
+    "exterior_mirrors": {
+      "value": "Proxy: power adjust, heated, power folding, driver-side auto-dim, tilt-down in reverse, memory",
+      "confidence": "proxy",
+      "source": [
+        "caranddriver_ex90",
+        "caranddriver_xc60"
+      ]
+    },
+    "interior_mirror": {
+      "value": "Proxy: conventional auto-dimming glass mirror (no digital/camera mirror found on SPA models)",
+      "confidence": "proxy",
+      "source": "caranddriver_ex90"
+    },
+    "driver_display": {
+      "value": "Thin instrument cluster mounted above the dashboard (size unpublished)",
+      "confidence": "press",
+      "source": "wiki"
+    },
+    "center_display": {
+      "value": "15.1-inch curved/convex floating display",
+      "confidence": "press",
+      "source": [
+        "wiki",
+        "caranddriver_ex60"
+      ]
+    },
+    "hud": {
+      "value": "Unknown for EX60 (proxy: EX90 has standard HUD)",
+      "confidence": "proxy",
+      "source": "caranddriver_ex90"
+    }
+  }
+}

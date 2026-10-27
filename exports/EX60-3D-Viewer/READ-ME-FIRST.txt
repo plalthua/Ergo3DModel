@@ -1,0 +1,94 @@
+EX60 3D Driver Workplace - Shareable Viewer
+=========================================
+
+SIMPLEST OPTION - NO INSTALLATION / SERVER
+Double-click EX60-3D-Viewer.html, or use Open with Chrome, Edge or Firefox.
+This single file embeds the 3D viewer, nine driver profiles, model spec,
+synthetic demo timeline and Three.js license. No Python, VS Code or
+internet connection is required. A modern JavaScript/WebGL-enabled
+browser is required.
+
+This version embeds a classic JavaScript bundle without import maps
+or data: module URLs. If scripts or WebGL are blocked, the page shows
+instructions and any available error details; it cannot override
+Teams/SharePoint preview or organization security policies.
+
+You may share just that HTML file from a shared folder or OneDrive.
+Download it or choose "Always keep on this device", then open it in your
+browser. OneDrive/SharePoint web previews may block JavaScript, so use
+the downloaded/synced HTML, not the preview. Current browser settings
+and company policies may restrict active content on shared drives.
+
+ALTERNATIVE SERVER-BASED START (Windows)
+1. Download the ZIP from OneDrive and extract ALL files to a local folder.
+   If using a synced OneDrive folder, choose "Always keep on this device".
+2. Install Python 3.9 or newer if needed: https://www.python.org/downloads/
+   Enable "Add Python to PATH" during installation.
+3. Double-click StartViewer.cmd.
+4. The default browser opens:
+   http://127.0.0.1:8065/viewer/index.html
+   You can paste that URL into Edge, Chrome, Firefox or another modern
+   WebGL-capable browser on the same PC.
+5. Keep the launcher window open. Press Ctrl+C there to stop the server.
+
+If port 8065 is busy, open a terminal in this folder and run:
+   StartViewer.cmd 8066
+Then use http://127.0.0.1:8066/viewer/index.html
+
+OTHER OPERATING SYSTEMS / MANUAL START
+Open a terminal in this folder and run with Python 3.9+:
+   python -m ergo3d serve --port 8065 --open
+Some systems use python3 instead of python.
+The viewer needs no pip packages, Node.js, VS Code or internet connection.
+Do not open viewer/index.html using file://.
+
+MOBILE AND PHONE BROWSERS
+- The page is responsive: on narrow screens (width <= 900 px or height
+  <= 520 px) the controls become a drawer opened by the "Show controls"
+  button, the metrics and driver body profile menus are collapsed by
+  default, and the 3D scene fills the screen. One finger orbits; two
+  fingers pinch-zoom and pan. Mirror insets start switched off on phones.
+- TESTED: Chrome 3D emulation of 390x844, 360x740 and 844x390 touch
+  viewports (plus 1440x1000 desktop) using the generated HTML. NOT tested
+  on physical iOS/Safari or Android devices; real-device WebGL speed and
+  browser behaviour are not promised. Test on an actual phone first.
+- Teams/SharePoint file previews, including the mobile Teams app preview,
+  cannot run the scripts. A downloaded HTML on a phone is not a supported
+  route; a PC download is the local fallback.
+- RECOMMENDED FOR MOBILE: an authenticated HTTPS host managed by IT.
+  Channel membership does not by itself authorize access to that host.
+  IT must configure Entra ID / SharePoint-based authorization that matches
+  the exact channel membership, including private/shared channel and
+  guest members, and must remove users when membership changes. The page
+  has no client-side login and must not be treated as access control.
+FEATURES
+- Seat, steering wheel/column, mirrors and seated driver in 3D.
+- Nine selectable driver body profiles, including two teenage examples.
+- Adjustable body size, shoulder breadth, hip spacing, torso depth and girth.
+- Synthetic demo: click "Load sample", then Play or scrub the timeline.
+- GLB, PNG and pose JSON export buttons in the sidebar.
+- Body changes remain in the browser tab; export a pose to retain dimensions.
+
+SHARING THROUGH ONEDRIVE
+Upload the EX60-3D-Viewer.zip file, or the entire EX60-3D-Viewer folder.
+Share its OneDrive download link, or share EX60-3D-Viewer.html by itself.
+The recipient must download/open the HTML locally (or use the optional
+launcher); OneDrive is file sharing, NOT a web host.
+The server is localhost-only and is not reachable from another PC.
+Only share with recipients permitted to receive the project.
+
+CONTENTS / PRIVACY
+This package includes viewer assets, the parameter spec, the Python CLI,
+a SYNTHETIC demonstration timeline and the Three.js license.
+It excludes real test logs, private reports, CAD, editor/agent settings
+and browser profiles. No external upload has been performed by packaging.
+Future pose/GLB exports and added timelines may contain sensitive data;
+review them before sharing.
+
+DATA CONFIDENCE
+Interior geometry and all body profiles are illustrative estimates, NOT
+validated Volvo CAD or population anthropometry. Original percentile
+labels are approximate. Teenage figures are illustrative, not driving
+eligibility or safety/compliance assessments. Do not use this visualization
+as an engineering certification. See data/ex60_spec.json for provenance
+and missing measurements.
