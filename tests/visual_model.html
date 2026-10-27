@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>EX60 visual model smoke test</title>
+  <style>body { margin: 0; background: #e5e7ea; } canvas { display: block; } pre { position: absolute; top: 0; color: #17212b; background: #ffffffdd; }</style>
+  <script type="importmap">
+    { "imports": { "three": "../viewer/vendor/three.module.js" } }
+  </script>
+</head>
+<body>
+<pre id="result">RUNNING</pre>
+<script type="module">
+import * as THREE from 'three';
+import * as K from '../viewer/kinematics.js';
+import { Ex60Scene } from '../viewer/model.js';
+
+try {
+  const response = await fetch('../data/ex60_spec.json');
+  if (!response.ok) throw new Error(`Spec fetch failed: ${response.status}`);
+  const spec = await response.json();
+  const car = new Ex60Scene(spec);
+  const inspection = spec.visual_reconstruction.inspection_transparency.value;
+  for (const side of [-1, 1]) {
+    const panel = car.root.getObjectByName(`painted_side_panel_${side}`);
+    const door = panel.material[1];
+    if (!door.transparent || door.depthWrite || door.opacity !== inspection.door_opacity) {
+      throw new Error('Door transparency is not applied.');
+    }
+    if (!panel.geometry.groups.some((group) => group.materialIndex === 1) ||
+        !panel.geometry.groups.some((group) => group.materialIndex === 0)) {
+      throw new Error('Transparent doors must retain opaque fenders.');
+    }
+  }
+  car.layers.body_roof.traverse((object) => {
+    if (object.isMesh && (!object.material.transparent || object.material.depthWrite ||
+        object.material.opacity !== inspection.roof_opacity)) {
+      throw new Error(`Roof transparency is not applied: ${object.name}`);
+    }
+  });
+  if (car.root.getObjectByName('panoramic_roof_1').material.opacity !== spec.visual_reconstruction.roof_glass_opacity) {
+    throw new Error('Panoramic roof transparency is not applied.');
+  }
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xe5e7ea);
+  scene.add(car.root, new THREE.HemisphereLight(0xffffff, 0x606574, 2));
+  const sun = new THREE.DirectionalLight(0xffffff, 3);
+  sun.position.set(-3, 6, 4);
+  scene.add(sun);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+  const metrics = {};
+  for (const name of Object.keys(spec.manikins)) {
+    car.update(K.designState(spec), name);
+    metrics[name] = K.ergoMetrics(spec, K.designState(spec), name);
+  }
+  const closeVector = (actual, expected, label) => {
+    if (actual.distanceTo(new THREE.Vector3(...expected)) > 1e-5) throw new Error(label);
+  };
+  for (const [part, frame] of [
+    ['cushion_rounded', car.cushion], ['cushion_insert', car.cushion],
+    ['cushion_bolster_left', car.cushion], ['cushion_bolster_right', car.cushion],
+    ['back_rounded', car.back], ['shoulder_panel', car.back], ['headrest_rounded', car.back],
+  ]) {
+    const mesh = frame.getObjectByName(`seat_${part}`);
+    if (!mesh?.isMesh || mesh.geometry.type !== 'BufferGeometry' ||
+        mesh.geometry.getAttribute('position').count <= 24) {
+      throw new Error(`Missing rounded seat contour: ${part}`);
+    }
+    const parameter = spec.visual_reconstruction.seat_detail.value.parts.find((p) => p.name === part);
+    closeVector(mesh.parent.position, parameter.center, `Seat detail center changed: ${part}`);
+  }
+  const limits = K.channelRanges(spec);
+  for (const endpoint of ['min', 'max', 'zero']) {
+    const pose = K.designState(spec);
+    for (const channel of ['seat_x', 'seat_z', 'seat_cushion_tilt', 'seat_back_angle']) {
+      if (endpoint !== 'zero') pose[channel] = limits[channel][endpoint];
+    }
+    for (const k of K.MIRRORS) {
+      for (const axis of ['yaw', 'pitch']) {
+        const channel = `mirror_${k}_${axis}`;
+        pose[channel] = endpoint === 'zero' ? 0 : limits[channel][endpoint];
+      }
+    }
+    car.update(pose, 'p50_male');
+    car.root.updateMatrixWorld(true);
+    closeVector(car.seat.position, K.hPoint(spec, pose), 'Seat H-point pivot changed');
+    closeVector(car.back.position, spec.visual_reconstruction.seat_detail.value.back_pivot, 'Back pivot changed');
+    if (Math.abs(car.cushion.rotation.y - THREE.MathUtils.degToRad(pose.seat_cushion_tilt)) > 1e-8 ||
+        Math.abs(car.back.rotation.y - THREE.MathUtils.degToRad(pose.seat_back_angle)) > 1e-8) {
+      throw new Error('Seat detail does not follow cushion tilt/recline');
+    }
+    for (const k of K.MIRRORS) {
+      const { group, glass, center } = car.mirrors[k];
+      closeVector(group.position, center, `Mirror pivot changed: ${k}`);
+      closeVector(glass.position, [0, 0, 0], `Glass is offset from normal pivot: ${k}`);
+      const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(group.quaternion);
+      closeVector(normal, K.mirrorNormal(...K.mirrorAngles(pose, k)), `Incorrect glass normal: ${k}`);
+      const geometryNormal = new THREE.Vector3().fromBufferAttribute(glass.geometry.getAttribute('normal'), 0);
+      closeVector(geometryNormal, [0, 0, 1], `Incorrect local glass normal: ${k}`);
+      for (const name of ['sculpted_housing', 'rim']) {
+        const mesh = group.getObjectByName(`mirror_${k}_${name}`);
+        if (!mesh?.isMesh || mesh.geometry.getAttribute('position').count <= 24) {
+          throw new Error(`Missing rounded mirror detail: ${k}/${name}`);
+        }
+      }
+      const vertices = glass.geometry.getAttribute('position');
+      for (let i = 0; i < vertices.count; i++) {
+        if (vertices.getZ(i) !== 0 ||
+            Math.abs(vertices.getX(i)) > spec.mirrors[k].glass_size.w / 2 + 1e-5 ||
+            Math.abs(vertices.getY(i)) > spec.mirrors[k].glass_size.h / 2 + 1e-5) {
+          throw new Error(`Glass departed from metric envelope/plane: ${k}`);
+        }
+      }
+    }
+  }
+  car.update(K.designState(spec), 'p50_male');
+  let meshes = 0;
+  car.root.traverse((object) => {
+    if (!object.isMesh) return;
+    meshes++;
+    const position = object.geometry.getAttribute('position');
+    if (![...position.array].every(Number.isFinite)) {
+      throw new Error(`Non-finite vertices: ${object.name}`);
+    }
+    object.geometry.computeBoundingSphere();
+    if (!Number.isFinite(object.geometry.boundingSphere.radius)) {
+      throw new Error(`Invalid bounds: ${object.name}`);
+    }
+  });
+  const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 100);
+  const dashboard = new URLSearchParams(location.search).has('dashboard');
+  const details = new URLSearchParams(location.search).has('details');
+  for (const name of ['r46_zones', 'sightlines', 'eyellipse', 'markers', 'manikin']) {
+    car.layers[name].visible = false;
+  }
+  if (details) {
+    for (const name of ['body', 'body_roof', 'body_glazing', 'exterior_details']) car.layers[name].visible = false;
+    camera.position.copy(car.toWorld([-900, -2450, 2150]));
+    camera.lookAt(car.toWorld([1120, -270, 950]));
+  } else if (dashboard) {
+    for (const name of ['body', 'body_roof', 'body_glazing', 'exterior_details', 'seat']) {
+      car.layers[name].visible = false;
+    }
+    camera.position.copy(car.toWorld([2200, -180, 1300]));
+    camera.lookAt(car.toWorld([570, 0, 1000]));
+  } else {
+    camera.position.copy(car.toWorld([-5000, -5500, 3300]));
+    camera.lookAt(car.toWorld([1400, 0, 800]));
+  }
+  renderer.render(scene, camera);
+  const error = renderer.getContext().getError();
+  if (error !== 0) throw new Error(`WebGL error: ${error}`);
+  const output = document.getElementById('result');
+  output.textContent = JSON.stringify({ status: 'PASS', meshes, metrics });
+  output.dataset.status = 'pass';
+  if (new URLSearchParams(location.search).has('screenshot')) output.hidden = true;
+} catch (error) {
+  document.getElementById('result').textContent = `FAIL: ${error.stack || error}`;
+  document.getElementById('result').dataset.status = 'fail';
+  throw error;
+}
+</script>
+</body>
+</html>

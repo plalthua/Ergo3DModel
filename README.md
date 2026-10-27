@@ -107,6 +107,23 @@ No external upload, hosting deployment or live web link has been created.
 
 ## Viewer
 - Sliders for every adjustment, a manikin selector, **Auto-adjust mirrors** (solves yaw/pitch for the target view) and **Design position**.
+- **Refined visual context**: painted exterior panels with wheel-arch openings, separate glazing, roof, lamps and trim; layered dashboard fascia, recessed vents, a raised circular speaker, generic screens, center console and steering-wheel controls. Doors and their windows are translucent (18% opacity), as are the roof, pillars and panoramic glass (16%), for cabin inspection; these are visualization settings, not real panel properties. Hood and fenders remain opaque. Use the **roof (toggle for cutaway)** layer to expose the cabin from above; glazing, cabin details and exterior trim can also be toggled independently.
+- **Seat and mirror detail**: rounded, tapered cushion/backrest, layered bolsters, shoulder panels,
+  concealed headrest support, upholstery seams and lower shell; sculpted exterior mirror caps,
+  shaped glass/rims, black mounting arms/trim and a rounded interior rearview housing. All detail
+  is static geometry in the existing seat/mirror layers and follows the original adjustment/log
+  pivots. H-point, mirror centers, normal axes and metric glass width/height are unchanged.
+  Geometry/material parameters live in `visual_reconstruction.seat_detail` and `mirror_detail`.
+  This is an original parametric interpretation, not downloaded textures or exact photo/CAD reconstruction.
+  Local gallery images `overview-exterior-gallery-08-1.webp`, `-09-1.webp` and `-01-1.webp`
+  guide the seat, exterior cap/arm and rearview shapes respectively.
+  [Car and Driver's EX60 reveal](https://www.caranddriver.com/news/a70059359/2027-volvo-ex60-revealed/)
+  was retrieved on 2026-10-27 and confirms optional headrest speakers; those optional components are
+  **not** depicted. The [Ars Technica EX60 article](https://arstechnica.com/cars/2026/01/heres-volvos-new-ex60-60000-electric-midsize-suv/)
+  was also retrieved for general vehicle context, not seat/mirror dimensions.
+  The official Volvo UK EX60 page returned HTTP 403. No measured upholstery, glass contour,
+  mirror curvature or hidden mount data was available; all new visual dimensions remain **estimates**.
+- **Visuals are estimates, not package data.** The reconstruction uses local CarImage references and cited press imagery only as visual guides; it is not photorealistic or dimensionally verified. The screens use generic procedural graphics, and the added visual geometry does not change ergonomic hardpoints, adjustment ranges or calculated metrics. See `visual_reconstruction` and `meta.data_gaps` in [the spec](data/ex60_spec.json) for provenance and unknowns. No third-party photos are embedded.
 - **Driver body profiles**: select a silhouette card in the menu over the 3D scene, or use the
   Occupant dropdown. Nine illustrative profiles include small/medium/tall adults, medium adult
   female, slim, broad-shouldered and larger-body adults, plus smaller and taller teenage figures.
@@ -128,6 +145,14 @@ No external upload, hosting deployment or live web link has been created.
 - Views: Iso, Side, Top, Front, **Driver eye**. Live **mirror insets** render from the reflected eye point; the image is not mirror-flipped. Layer toggles include the R46 ground zones.
 - Metrics panel: H-point→wheel distance, cluster sightline margin, headroom and mirror view error. Values are coloured against `ergo_limits`.
 - Export a **GLB** of the posed model (metres, Y-up), a PNG screenshot or the pose as JSON.
+
+## Visual model validation
+Open `http://127.0.0.1:8060/tests/visual_model.html` while the local server is running
+to render the exterior and check finite mesh geometry and metrics for all nine profiles.
+It also checks the rounded seat/mirror parts, seat adjustment parenting, unchanged mirror glass
+pivots and normals at zero and adjustment endpoints. Add `?details=1` for a cabin/seat view.
+Add `?dashboard=1` for the dashboard cutaway, or `?screenshot=1` to hide the test output.
+This is a rendering smoke test, not a dimensional-accuracy or photorealism certification.
 
 ## Architecture
 | Path | Purpose |

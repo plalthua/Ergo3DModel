@@ -29,7 +29,7 @@ const val = (d) => (typeof d === 'object' ? d.value : d);
 export function channelRanges(spec) {
   const s = spec.seat, st = spec.steering, m = spec.mirrors;
   const r = {
-    seat_x: { ...s.fore_aft_mm, unit: 'mm', label: 'Seat fore/aft (+rear)' },
+    seat_x: { ...s.fore_aft_mm, unit: 'mm', label: 'Seat Length' },
     seat_z: { ...s.height_mm, unit: 'mm', label: 'Seat height' },
     seat_back_angle: { ...s.back_angle_deg, unit: '°', label: 'Backrest angle' },
     seat_cushion_tilt: { ...s.cushion_tilt_deg, unit: '°', label: 'Cushion tilt' },

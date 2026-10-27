@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 Rebuilds the single-file viewer and refreshes both export folders, ZIPs and SHA256SUMS.
 Run from anywhere: powershell -File tools\refresh_exports.ps1
@@ -18,6 +18,7 @@ Copy-Item $single (Join-Path $teams 'index.html') -Force
 foreach ($name in 'index.html', 'style.css', 'app.js', 'kinematics.js', 'model.js') {
     Copy-Item (Join-Path $root "viewer\$name") (Join-Path $desktop "viewer\$name") -Force
 }
+Copy-Item (Join-Path $root 'data\ex60_spec.json') (Join-Path $desktop 'data\ex60_spec.json') -Force
 
 $lines = foreach ($name in 'index.html', 'DEPLOY-AND-SHARE.txt', 'CHANNEL-POST-TEMPLATE.txt') {
     '{0}  {1}' -f (Get-FileHash (Join-Path $teams $name) -Algorithm SHA256).Hash.ToLower(), $name

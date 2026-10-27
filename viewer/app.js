@@ -39,7 +39,14 @@ controls.enableDamping = true;
 const mirrorCam = new THREE.PerspectiveCamera(20, 1.6, 0.05, 200);
 
 const CAMS = {
-  iso: () => [[-1.6, 2.4, 3.2], car.toWorld([1100, -370, 1000])],
+  iso: () => {
+    const length = spec.vehicle.length.value, height = spec.vehicle.height.value;
+    const center = length / 2 - spec.vehicle.front_overhang.value;
+    return [
+      car.toWorld([center - length * 1.1, -length * 1.05, height * 1.9]),
+      car.toWorld([center, 0, height / 2]),
+    ];
+  },
   side: () => [car.toWorld([1100, -4200, 1100]), car.toWorld([1100, -370, 1000])],
   top: () => [car.toWorld([1100, -369, 5200]), car.toWorld([1100, -370, 900])],
   front: () => [car.toWorld([-2800, -370, 1350]), car.toWorld([1000, -370, 1050])],
@@ -197,10 +204,18 @@ $('autoMirrors').onclick = () => {
 $('resetDesign').onclick = () => { state = K.designState(spec); $('followLog').checked = false; refresh(); };
 
 // ---------------------------------------------------------------- toggles
-for (const name of ['body', 'wheels', 'interior', 'seat', 'steering', 'mirrors', 'manikin', 'sightlines', 'eyellipse', 'markers', 'r46_zones']) {
+const layerLabels = {
+  body: 'painted body',
+  body_roof: 'roof (toggle for cutaway)',
+  body_glazing: 'glazing',
+  exterior_details: 'exterior trim and lamps',
+  cabin_details: 'dashboard and console details',
+  r46_zones: 'R46 ground zones',
+};
+for (const name of Object.keys(car.layers)) {
   const l = document.createElement('label');
   l.className = 'chk';
-  l.innerHTML = `<input type="checkbox" ${name === 'eyellipse' ? '' : 'checked'}> ${name}`;
+  l.innerHTML = `<input type="checkbox" ${name === 'eyellipse' ? '' : 'checked'}> ${layerLabels[name] || name}`;
   const cb = l.querySelector('input');
   car.layers[name].visible = cb.checked;
   cb.onchange = () => { car.layers[name].visible = cb.checked; };
