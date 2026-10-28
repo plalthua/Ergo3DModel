@@ -139,6 +139,9 @@ export function clusterSightlineMargin(spec, a, manikin) {
   const st = spec.steering;
   const rInner = val(st.rim_diameter) / 2 - val(st.rim_thickness) / 2;
   const hub = val(st.hub_radius ?? 85);
+  const mode = spec.displays.driver.visibility_mode ?? 'through_wheel';
+  if (!['through_wheel', 'above_rim'].includes(mode)) throw new Error(`Unknown driver display visibility mode: ${mode}`);
+  const rOuter = val(st.rim_diameter) / 2 + val(st.rim_thickness) / 2;
   const eye = eyePoint(spec, a, manikin);
   const wc = wheelCenter(spec, a), ax = steeringAxis(spec, a), up = wheelUp(spec, a);
   let m = Infinity;
@@ -148,7 +151,7 @@ export function clusterSightlineMargin(spec, a, manikin) {
     if (Math.abs(den) < 1e-9) return NaN;
     const p = add(eye, scale(d, dot(sub(wc, eye), ax) / den));
     const s = dot(sub(p, wc), up);
-    m = Math.min(m, rInner - s, s - hub);
+    m = Math.min(m, mode === 'above_rim' ? s - rOuter : Math.min(rInner - s, s - hub));
   }
   return m;
 }

@@ -9,6 +9,27 @@ SPEC = json.loads((ROOT / "data" / "ex60_spec.json").read_text(encoding="utf-8")
 
 
 class VisualModelSpec(unittest.TestCase):
+    def test_reference_remodel_is_explicitly_uncalibrated(self):
+        visual = SPEC["visual_reconstruction"]
+        sources = {s["id"] for s in SPEC["meta"]["sources"]}
+        for key in ("reference_remodel", "cabin_seating"):
+            self.assertEqual(visual[key]["confidence"], "estimate")
+            self.assertIn(visual[key]["source"], sources)
+        self.assertEqual(SPEC["displays"]["driver"]["visibility_mode"], "above_rim")
+        self.assertEqual(SPEC["seat"]["sgrp"]["y"], -370)
+        layout = visual["cabin_seating"]["value"]
+        self.assertEqual(layout["passenger_h_point"], [1330, 370, 700])
+        self.assertEqual(len(layout["rear_centers_y_mm"]), 3)
+        self.assertEqual(sum(layout["rear_centers_y_mm"]), 0)
+        glass = visual["reference_remodel"]["value"]["windscreen"]
+        self.assertGreater(glass["bow_mm"], 40)
+        self.assertGreater(glass["rows"], 12)
+        self.assertGreater(glass["columns"], 12)
+        self.assertTrue(0 < glass["surround_fraction"] < 0.1)
+        self.assertTrue(1 < glass["material"]["ior"] < 2)
+        self.assertEqual(glass["material"]["metalness"], 0)
+        self.assertTrue(any("uncalibrated photo" in s for s in SPEC["meta"]["data_gaps"]))
+
     def test_steering_detail_is_bounded_and_estimate_sourced(self):
         trim = SPEC["visual_reconstruction"]["dashboard"]["steering_trim"]
         self.assertEqual(trim["confidence"], "estimate")

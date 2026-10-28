@@ -20,6 +20,50 @@ try {
   if (!response.ok) throw new Error(`Spec fetch failed: ${response.status}`);
   const spec = await response.json();
   const car = new Ex60Scene(spec);
+  const remodel = spec.visual_reconstruction.reference_remodel.value;
+  const windscreen = car.root.getObjectByName('windshield_1');
+  const wp = windscreen.geometry.getAttribute('position'), wd = remodel.windscreen;
+  if (wp.count !== (wd.columns + 1) * (wd.rows + 1)) throw new Error('Windscreen sampling changed.');
+  const corners = spec.visual_reconstruction.glazing.find((p) => p.name === 'windshield').points.map((p) => new THREE.Vector3(...p));
+  const wn = new THREE.Vector3().crossVectors(corners[1].clone().sub(corners[0]), corners[3].clone().sub(corners[0])).normalize();
+  if (wn.z < 0) wn.negate();
+  const surfacePoint = (u, t) => corners[0].clone().lerp(corners[1], u).lerp(
+    corners[3].clone().lerp(corners[2], u), t).addScaledVector(wn, wd.bow_mm * Math.sin(Math.PI * u) * Math.sin(Math.PI * t));
+  let glassBow = 0;
+  for (let col = 0; col <= wd.columns; col++) {
+    for (let row = 0; row <= wd.rows; row++) {
+      const actual = new THREE.Vector3().fromBufferAttribute(wp, col * (wd.rows + 1) + row);
+      if (actual.distanceTo(surfacePoint(col / wd.columns, row / wd.rows)) > 0.001) throw new Error('Windscreen spec curvature mismatch.');
+      glassBow = Math.max(glassBow, actual.clone().sub(corners[0]).dot(wn));
+    }
+  }
+  if (Math.abs(glassBow - wd.bow_mm) > 0.001) throw new Error('Windscreen flattened or not non-coplanar.');
+  for (let edge = 0; edge < 4; edge++) {
+    const trim = car.root.getObjectByName(`windscreen_matched_surround_${edge}`).geometry.getAttribute('position');
+    for (let col = 0; col <= wd.columns; col++) {
+      const u = col / wd.columns, f = wd.surround_fraction;
+      const [a, b] = [[u, f], [1 - f, u], [1 - u, 1 - f], [f, 1 - u]][edge];
+      const expected = surfacePoint(a, b).addScaledVector(wn, wd.surround_offset_mm);
+      if (new THREE.Vector3().fromBufferAttribute(trim, col * 3 + 2).distanceTo(expected) > 0.001) {
+        throw new Error('Windscreen surround does not follow curved glass.');
+      }
+    }
+  }
+  const layout = spec.visual_reconstruction.cabin_seating.value;
+  const passenger = car.root.getObjectByName('passenger_static_seat');
+  if (passenger.position.distanceTo(new THREE.Vector3(...layout.passenger_h_point)) > 1e-8) throw new Error('Passenger symmetry changed.');
+  for (const [i, y] of layout.rear_centers_y_mm.entries()) {
+    const seat = car.root.getObjectByName(`rear_static_seat_${i}`);
+    if (seat.position.distanceTo(new THREE.Vector3(layout.rear_x_mm, y, layout.rear_z_mm)) > 1e-8) throw new Error('Rear three-place layout changed.');
+  }
+  const dim = car.root.getObjectByName('display_driver');
+  const dimCenter = spec.displays.driver.center;
+  if (dim.position.distanceTo(new THREE.Vector3(dimCenter.x, dimCenter.y, dimCenter.z)) > 1e-8) throw new Error('DIM visual center diverged.');
+  dim.updateMatrixWorld(true);
+  for (const [i, edge] of K.driverDisplayEdges(spec).entries()) {
+    const point = new THREE.Vector3(0, (i === 0 ? 1 : -1) * spec.displays.driver.h / 2, 0).applyMatrix4(dim.matrix);
+    if (point.distanceTo(new THREE.Vector3(...edge)) > 1e-6) throw new Error('DIM display/metric edge mismatch.');
+  }
   const refinement = spec.visual_reconstruction.exterior_refinement.value;
   const hood = car.root.getObjectByName('sculpted_hood');
   const hoodVertices = hood.geometry.getAttribute('position');
@@ -126,11 +170,34 @@ try {
   renderer.setSize(innerWidth, innerHeight);
   document.body.appendChild(renderer.domElement);
   const metrics = {};
+  const visibilityModes = { above_rim: {}, through_wheel: {} };
   for (const name of Object.keys(spec.manikins)) {
     car.update(K.designState(spec), name);
     metrics[name] = K.ergoMetrics(spec, K.designState(spec), name);
+    for (const [prefix, point] of [
+      ['h', K.hPoint(spec, K.designState(spec))],
+      ['eye', K.eyePoint(spec, K.designState(spec), name)],
+      ['wheel', K.wheelCenter(spec, K.designState(spec))],
+    ]) {
+      for (const [i, axis] of ['x', 'y', 'z'].entries()) metrics[name][`${prefix}_${axis}`] = point[i];
+    }
     if (!Object.values(metrics[name]).every(Number.isFinite)) throw new Error(`Non-finite metrics: ${name}`);
+    for (const mode of Object.keys(visibilityModes)) {
+      const alternate = structuredClone(spec);
+      alternate.displays.driver.visibility_mode = mode;
+      visibilityModes[mode][name] = K.clusterSightlineMargin(alternate, K.designState(spec), name);
+    }
   }
+  const invalid = structuredClone(spec);
+  invalid.displays.driver.visibility_mode = 'invalid';
+  let rejected = false;
+  try { K.clusterSightlineMargin(invalid, K.designState(spec), 'p50_male'); } catch { rejected = true; }
+  if (!rejected) throw new Error('Invalid DIM visibility mode accepted.');
+  const legacy = structuredClone(spec);
+  legacy.displays.driver.center = { x: 640, y: -370, z: 1075 };
+  legacy.displays.driver.tilt_deg = 20;
+  delete legacy.displays.driver.visibility_mode;
+  if (Math.abs(K.clusterSightlineMargin(legacy, K.designState(legacy), 'p50_male') - 13.5) > 0.1) throw new Error('Legacy DIM routing regressed.');
   const closeVector = (actual, expected, label) => {
     if (actual.distanceTo(new THREE.Vector3(...expected)) > 1e-5) throw new Error(label);
   };
@@ -208,6 +275,10 @@ try {
     }
     car.update(pose, 'p50_male');
     car.root.updateMatrixWorld(true);
+    if (passenger.position.distanceTo(new THREE.Vector3(...layout.passenger_h_point)) > 1e-8 ||
+        passenger.getObjectByName('seat_back_recline_frame').rotation.y !== THREE.MathUtils.degToRad(layout.front_back_angle_deg)) {
+      throw new Error('Driver replay leaked into static passenger seat.');
+    }
     closeVector(car.wheelFrame.position, K.wheelCenter(spec, pose), 'Steering wheel center changed');
     closeVector(new THREE.Vector3(0, 0, 1).applyQuaternion(car.wheelFrame.quaternion),
       K.steeringAxis(spec, pose), 'Driver-facing steering normal changed');
@@ -317,11 +388,27 @@ try {
     camera.position.copy(car.toWorld([-900, -2450, 2150]));
     camera.lookAt(car.toWorld([1120, -270, 950]));
   } else if (dashboard) {
-    for (const name of ['body', 'body_roof', 'body_glazing', 'exterior_details', 'seat']) {
+    for (const name of ['body', 'body_roof', 'body_glazing', 'exterior_details', 'seat', 'cabin_seating', 'wheels']) {
       car.layers[name].visible = false;
     }
     camera.position.copy(car.toWorld([2200, -180, 1300]));
     camera.lookAt(car.toWorld([570, 0, 1000]));
+  } else if (view === 'top' || view === 'seats' || view === 'upholstery') {
+    for (const name of ['body', 'body_roof', 'body_glazing', 'exterior_details', 'wheels']) car.layers[name].visible = false;
+    if (view === 'top') {
+      camera.position.copy(car.toWorld([1650, 0, 5500]));
+      camera.up.set(-1, 0, 0);
+      camera.lookAt(car.toWorld([1650, 0, 700]));
+    } else if (view === 'upholstery') {
+      car.layers.cabin_seating.visible = false;
+      car.layers.steering.visible = false;
+      car.layers.mirrors.visible = false;
+      camera.position.copy(car.toWorld([600, -1300, 1400]));
+      camera.lookAt(car.toWorld([1440, -370, 1030]));
+    } else {
+      camera.position.copy(car.toWorld([200, -2100, 1950]));
+      camera.lookAt(car.toWorld([1900, 0, 950]));
+    }
   } else if (view === 'side') {
     camera.position.copy(car.toWorld([1450, -7800, 1600]));
     camera.lookAt(car.toWorld([1450, 0, 840]));
@@ -341,7 +428,7 @@ try {
   const output = document.getElementById('result');
   output.textContent = JSON.stringify({
     status: 'PASS', meshes, rendered_triangles: renderer.info.render.triangles,
-    hood_crown_mm: maxCrown, metrics,
+    hood_crown_mm: maxCrown, windscreen_bow_mm: glassBow, metrics, visibility_modes: visibilityModes,
   });
   output.dataset.status = 'pass';
   if (new URLSearchParams(location.search).has('screenshot')) output.hidden = true;

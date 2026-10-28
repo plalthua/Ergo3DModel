@@ -1,4 +1,5 @@
 import math
+import copy
 import os
 import unittest
 
@@ -34,6 +35,34 @@ class DesignPosition(unittest.TestCase):
 
 
 class Kinematics(unittest.TestCase):
+    def test_driver_display_visibility_modes(self):
+        adj = G.Adjustments.design(SPEC)
+        legacy = copy.deepcopy(SPEC)
+        legacy["displays"]["driver"].update(
+            center={"x": 640, "y": -370, "z": 1075}, tilt_deg=20,
+            visibility_mode="through_wheel")
+        for name, expected in (("p5_female", -1.5), ("p50_male", 13.5), ("p95_male", -4.5)):
+            self.assertAlmostEqual(G.cluster_sightline_margin(legacy, adj, name), expected, delta=0.1)
+        del legacy["displays"]["driver"]["visibility_mode"]
+        self.assertAlmostEqual(G.cluster_sightline_margin(legacy, adj, "p50_male"), 13.5, delta=0.1)
+        for name in SPEC["manikins"]:
+            eye = G.eye_point(SPEC, adj, name)
+            center = G.wheel_center(SPEC, adj)
+            axis = G.steering_axis(SPEC, adj)
+            up = G.wheel_up(SPEC, adj)
+            height = []
+            for target in G.driver_display_edges(SPEC):
+                direction = G.sub(target, eye)
+                intersection = G.add(eye, G.scale(direction, G.dot(G.sub(center, eye), axis) / G.dot(direction, axis)))
+                height.append(G.dot(G.sub(intersection, center), up))
+            st = SPEC["steering"]
+            radius = (st["rim_diameter"]["value"] + st["rim_thickness"]["value"]) / 2
+            self.assertAlmostEqual(G.cluster_sightline_margin(SPEC, adj, name), min(height) - radius, places=9)
+        invalid = copy.deepcopy(SPEC)
+        invalid["displays"]["driver"]["visibility_mode"] = "unknown"
+        with self.assertRaisesRegex(ValueError, "Unknown driver display visibility mode"):
+            G.cluster_sightline_margin(invalid, adj, "p50_male")
+
     def test_seat_rail_rises_forward(self):
         adj = G.Adjustments.design(SPEC)
         h0 = G.h_point(SPEC, adj)
@@ -117,17 +146,16 @@ class DriverProfiles(unittest.TestCase):
             with self.subTest(profile=name):
                 self.assertTrue(all(math.isfinite(value) for value in metrics.values()))
 
-    def test_original_design_metrics_preserved(self):
+    def test_original_non_display_design_metrics_preserved(self):
         adj = G.Adjustments.design(SPEC)
-        for name, headroom, cluster in (
-            ("p5_female", 197.2, -1.5),
-            ("p50_male", 105.6, 13.5),
-            ("p95_male", 32.6, -4.5),
+        for name, headroom in (
+            ("p5_female", 197.2),
+            ("p50_male", 105.6),
+            ("p95_male", 32.6),
         ):
             metrics = G.ergo_metrics(SPEC, adj, name)
             with self.subTest(profile=name):
                 self.assertAlmostEqual(metrics["headroom_mm"], headroom, delta=0.1)
-                self.assertAlmostEqual(metrics["cluster_sightline_margin_mm"], cluster, delta=0.1)
 
     def test_customization_paths_are_positive_dimensions(self):
         controls = SPEC["manikin_rendering"]["customization"]

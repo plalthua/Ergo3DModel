@@ -8,3 +8,6 @@ data/timelines/*
 !data/timelines/sample_timeline.json
 reports/*
 !reports/.gitkeep
+
+# Local reference photos (third-party copyright) stay out of the public repo
+CarImage/

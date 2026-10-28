@@ -42,6 +42,18 @@
         "retrieved": "2026-10-27"
       },
       {
+        "id": "supplied_cockpit_front",
+        "title": "User-supplied Pasted Image.png: frontal dashboard reference (uncalibrated)",
+        "url": null,
+        "retrieved": "2026-10-28"
+      },
+      {
+        "id": "supplied_cabin_top",
+        "title": "User-supplied Pasted Image 2.png: top cabin reference (uncalibrated)",
+        "url": null,
+        "retrieved": "2026-10-28"
+      },
+      {
         "id": "caranddriver_ex90",
         "title": "Car and Driver - Volvo EX90 specs (proxy)",
         "url": "https://www.caranddriver.com/volvo/ex90/specs",
@@ -67,6 +79,7 @@
       }
     ],
     "data_gaps": [
+      "2026-10-28 two-image remodel: uncalibrated photo reconstruction only. DIM location/tilt and above-rim routing are intentional estimates, not measured visibility. Windscreen curvature, fascia sweep, upholstery microstructure and static passenger/rear seating layout cannot be calibrated from these perspectives. Driver H-point, seat dimensions/ranges, column and mirror hardpoints are unchanged. Static passenger/rear parts have no logged channels or ergonomic certification.",
       "All driver body profiles, including percentile-labelled adults and teenage examples, are illustrative estimates. Obtain validated anthropometry or individual measurements; no preset represents every person of an age, sex or body type.",
       "Interior room (headroom, legroom, shoulder/hip room), H-point height: not published for EX60 - all seat/package coordinates are estimates.",
       "Seat adjustment ranges, steering wheel diameter and tilt/telescope ranges: not published - estimates.",
@@ -417,15 +430,15 @@
       "w": 300,
       "h": 70,
       "center": {
-        "x": 440,
+        "x": 680,
         "y": -370,
-        "z": 1165
+        "z": 1230
       },
       "tilt_deg": 10,
       "visibility_mode": "above_rim",
       "confidence": "estimate",
-      "source": "local_gallery_visual",
-      "note": "DIM moved forward and raised above the dashboard, aligned with the driver, from dashboard1.png and interior-gallery-6.webp. Position and tilt are uncalibrated visual estimates; visibility is evaluated above the outer steering rim, not through the wheel opening."
+      "source": "supplied_cockpit_front",
+      "note": "Slim DIM above the rim on a forward shelf. Original photo-informed uncalibrated placement inside the curved windscreen envelope, intentionally replacing both legacy root and prior export placements. Signed wheel-plane vertical clearance only, not full visibility certification."
     }
   },
   "pedals": {
@@ -881,9 +894,53 @@
     }
   },
   "visual_reconstruction": {
+    "reference_remodel": {
+      "confidence": "estimate",
+      "source": "supplied_cockpit_front",
+      "note": "All nested dimensions, sampling and finish values inherit estimate provenance. Original procedural geometry/graphics only; no supplied image is embedded. Boundary-preserving doubly curved glass keeps existing cowl and roof junctions.",
+      "value": {
+        "windscreen": {
+          "columns": 32, "rows": 24, "bow_mm": 64,
+          "surround_fraction": 0.035, "surround_offset_mm": 0.6,
+          "material": {"color": "#c0d8dd", "roughness": 0.12, "metalness": 0, "transmission": 0.12, "thickness": 4.5, "ior": 1.52, "opacity": 0.24},
+          "surround_material": {"color": "#181e21", "roughness": 0.62, "metalness": 0}
+        },
+        "fascia_sweep": {"edge_forward_mm": 64, "center_crown_mm": 8, "segments": 24},
+        "dim_shelf": {
+          "center": [650, -370, 1179], "size": [100, 340, 24], "radius": 14,
+          "support_center": [665, -370, 1193], "support_size": [28, 270, 24]
+        },
+        "surface": {
+          "size": 256, "seed": 64028, "thread_px": 4, "pore_spacing_px": 20, "pore_radius_px": 1.4,
+          "weave_base": 179, "weave_amplitude": 24, "noise_amplitude": 10, "pore_depth": 68,
+          "fabric_tile_mm": 64, "upholstery_tile_mm": 48, "plastic_tile_mm": 30,
+          "fabric_bump_mm": 0.22, "upholstery_bump_mm": 0.1, "plastic_bump_mm": 0.045,
+          "paint_bump_mm": 0.012, "paint_tile_mm": 20, "paint_grain_amplitude": 6,
+          "wood_size": [512, 128], "wood_tile_mm": [850, 180], "wood_base": "#939b98",
+          "wood_lines": 140, "wood_alpha": 0.11, "wood_bump_mm": 0.06
+        }
+      }
+    },
+    "cabin_seating": {
+      "confidence": "estimate",
+      "source": "supplied_cabin_top",
+      "note": "Static illustrative 2+3 layout. Passenger copies existing driver upholstery envelopes at neutral design pose mirrored about tunnel, not driver replay. Rear contours reuse original normalized upholstery with separate unmeasured envelopes. No passenger/rear logging channels, H-points or occupant-fit claims.",
+      "value": {
+        "passenger_h_point": [1330, 370, 700], "front_back_angle_deg": 25, "front_cushion_tilt_deg": 3,
+        "rear_x_mm": 2450, "rear_z_mm": 680, "rear_centers_y_mm": [-485, 0, 485],
+        "rear_widths_mm": [475, 490, 475], "rear_back_angle_deg": 18, "rear_cushion_tilt_deg": 3,
+        "rear_envelope": {"cushion": {"length": 480, "width": 475, "thickness": 120}, "backrest": {"height": 560, "width": 475, "thickness": 110}, "headrest": {"height": 160, "width": 245, "thickness": 110}},
+        "rear_part_scale": [0.92, 0.88, 0.88],
+        "rear_base": {"center": [2330, 0, 525], "size": [500, 1460, 180], "radius": 35, "material": "shell"},
+        "rear_bridge": {"center": [2350, 0, 588], "size": [440, 1430, 105], "radius": 35, "material": "upholstery"},
+        "rear_center_omitted_parts": ["cushion_insert", "cushion_bolster_left", "cushion_bolster_right", "back_insert", "back_bolster_left", "back_bolster_right", "shoulder_panel"],
+        "rear_armrest": {"center": [-20, 0, 330], "seat_index": 1, "size": [12, 210, 300], "radius": 18},
+        "buckles": {"front_x_mm": 1450, "front_y_mm": [-82, 82], "front_z_mm": 647, "rear_x_mm": 2520, "rear_y_mm": [-247, 247], "rear_z_mm": 660, "size": [32, 22, 38], "radius": 6, "color": "#8f2632"}
+      }
+    },
     "confidence": "estimate",
     "source": "local_gallery_visual",
-    "note": "Illustrative visual reconstruction from the supplied local CarImage gallery and dashboard reference, plus public press imagery. It does not change ergonomic hardpoints, adjustment ranges, sightline calculations or clearance geometry. Dimensions are unmeasured; screen content is generic and not a reproduction of Volvo software.",
+    "note": "Illustrative visual reconstruction from the local CarImage gallery, public press imagery and two supplied cockpit/cabin references. Driver hardpoints and adjustment ranges are unchanged. The 2026-10-28 remodel intentionally changes only DIM placement/tilt and its above-rim sightline metric. All visual dimensions are unmeasured; static passenger/rear seating is not logged. Screen content is original generic artwork, not vehicle software.",
     "exterior_refinement": {
       "confidence": "estimate",
       "source": "local_gallery_visual",
@@ -1724,19 +1781,19 @@
     },
     "dashboard": {
       "confidence": "estimate",
-      "source": "local_gallery_visual",
-      "note": "Second manual interpretation of interior-gallery-6 and overview-exterior-gallery-01-1. Layered curved fascia replaces coarse blocks; existing display centers and sizes remain unchanged. Screen graphics are generic procedural illustrations, not reproduced Volvo software. Hidden structure and all dimensions remain unmeasured.",
+      "source": "supplied_cockpit_front",
+      "note": "Broad swept fabric fascia, grey wood, central raised speaker and landscape display interpreted from supplied frontal reference. DIM intentionally repositioned separately. Nested dimensions and materials remain unmeasured estimates; generic original screen graphics.",
       "materials": {
         "upper": {
           "color": "#303438",
           "roughness": 0.92
         },
         "lower": {
-          "color": "#b2a593",
+          "color": "#b8bdb9",
           "roughness": 0.88
         },
         "wood": {
-          "color": "#74604d",
+          "color": "#a8aeaa",
           "roughness": 0.72
         },
         "vent": {
@@ -1750,6 +1807,11 @@
         }
       },
       "fascia": [
+        {
+          "name": "dashboard_high_forward_pad", "material": "upper", "width": 1450,
+          "corner_radius": 12, "sweep_ratio": 0.25,
+          "profile_xz": [[580, 1120], [580, 1160], [600, 1172], [650, 1174], [665, 1150], [645, 1124]]
+        },
         {
           "name": "dashboard_upper_pad",
           "material": "upper",
@@ -2126,9 +2188,9 @@
       },
       "tweeter": {
         "center": [
-          470,
-          230,
-          1128
+          640,
+          0,
+          1212
         ],
         "radius": 27,
         "depth": 42,
@@ -2245,15 +2307,15 @@
     },
     "seat_detail": {
       "confidence": "estimate",
-      "source": "local_gallery_visual",
-      "note": "Original parametric interpretation of CarImage overview-exterior-gallery-08-1.webp and -01-1.webp; not reverse-engineered CAD. All nested dimensions, ratios and materials inherit estimate confidence. Local contours are normalized by existing seat envelope dimensions; centers are mm in the unchanged cushion/recline frames. No exposed headrest poles are asserted because supports are concealed in the reference. Optional speaker hardware is omitted.",
+      "source": "supplied_cabin_top",
+      "note": "Original parametric interpretation of the supplied top-cabin image and earlier CarImage overview-exterior-gallery-08-1.webp and -01-1.webp; not reverse-engineered CAD. Light bolsters and woven/perforated inserts inherit estimate confidence. Existing normalized driver contours, envelope, local centers and cushion/recline pivots are preserved. Supported headrests are illustrative; optional speaker hardware is omitted.",
       "value": {
         "materials": {
-          "upholstery": {"color": "#c9b79c", "roughness": 0.88},
-          "insert": {"color": "#bfb098", "roughness": 0.96},
-          "shell": {"color": "#44423f", "roughness": 0.72}
+          "upholstery": {"color": "#d2d7d1", "roughness": 0.82},
+          "insert": {"color": "#aeb9b0", "roughness": 0.94},
+          "shell": {"color": "#414947", "roughness": 0.72}
         },
-        "seam_color": "#897b68",
+        "seam_color": "#87998f",
         "rails": {"length": 520, "section": [30, 25], "x_offset": -80, "y_offset": 200, "floor_offset": 70},
         "back_pivot": [120, 0, -40],
         "pedestal": {"size": [380, 420, 1], "radius": 34, "x_offset": -120, "floor_offset": 85, "top_offset": 170},

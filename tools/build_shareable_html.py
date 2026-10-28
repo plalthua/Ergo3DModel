@@ -8,12 +8,22 @@ import platform
 import shutil
 import subprocess
 import sys
-import tempfile
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+@contextmanager
+def project_build_directory():
+    stage = ROOT / "tools" / (".export-build-" + uuid.uuid4().hex)
+    stage.mkdir()
+    try:
+        yield stage
+    finally:
+        shutil.rmtree(stage)
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -42,8 +52,7 @@ def bundle_app(viewer: Path, app: str) -> str:
         )
 
     # Resolve only the vendored modules; never fetch application code or data.
-    with tempfile.TemporaryDirectory(prefix="ergo-html-") as directory:
-        stage = Path(directory)
+    with project_build_directory() as stage:
         three = stage / "node_modules" / "three"
         three.mkdir(parents=True)
         shutil.copyfile(viewer / "vendor" / "three.module.js", three / "index.js")

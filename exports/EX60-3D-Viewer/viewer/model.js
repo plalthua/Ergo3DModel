@@ -153,6 +153,44 @@ function contourSolid(points, rings, radius, material) {
   return new THREE.Mesh(geometry, material);
 }
 
+function surfaceUV(mesh, tile, axes = ['x', 'y']) {
+  const p = mesh.geometry.getAttribute('position'), uv = [];
+  for (let i = 0; i < p.count; i++) {
+    const point = new THREE.Vector3().fromBufferAttribute(p, i);
+    uv.push(point[axes[0]] / tile[0], point[axes[1]] / tile[1]);
+  }
+  mesh.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+}
+
+// Deterministic woven height maps with staggered pores; no reference-photo pixels.
+function wovenTexture(d, perforated) {
+  const pixels = new Uint8Array(d.size * d.size * 4);
+  let seed = d.seed;
+  for (let y = 0; y < d.size; y++) {
+    for (let x = 0; x < d.size; x++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const thread = Math.sin(x * Math.PI / d.thread_px) * Math.cos(y * Math.PI / d.thread_px);
+      const row = Math.floor(y / d.pore_spacing_px);
+      const dx = (x + (row % 2) * d.pore_spacing_px / 2) % d.pore_spacing_px - d.pore_spacing_px / 2;
+      const dy = y % d.pore_spacing_px - d.pore_spacing_px / 2;
+      const pore = perforated ? Math.max(0, 1 - Math.hypot(dx, dy) / d.pore_radius_px) : 0;
+      const shade = d.weave_base + thread * d.weave_amplitude +
+        (seed / 4294967296 - 0.5) * d.noise_amplitude - pore * d.pore_depth;
+      const i = (y * d.size + x) * 4;
+      pixels[i] = pixels[i + 1] = pixels[i + 2] = shade;
+      pixels[i + 3] = 255;
+    }
+  }
+  const texture = new THREE.DataTexture(pixels, d.size, d.size);
+  texture.name = perforated ? 'original_perforated_weave' : 'original_fine_weave';
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 // Original schematic graphics, not image crops or a reproduction of vehicle software.
 function displayTexture(key, size) {
   const canvas = document.createElement('canvas');
@@ -267,6 +305,11 @@ export class Ex60Scene {
     this.root.rotation.x = -Math.PI / 2; // vehicle Z-up -> three.js Y-up
     this.root.scale.setScalar(0.001); // mm -> m
     this.layers = {};
+    const surface = val(spec.visual_reconstruction.reference_remodel).surface;
+    this.fineWeave = wovenTexture(surface, false);
+    this.perforatedWeave = wovenTexture(surface, true);
+    this.paintGrain = wovenTexture({ ...surface, weave_amplitude: 0, noise_amplitude: surface.paint_grain_amplitude }, false);
+    this.paintGrain.name = 'original_paint_micrograin';
     this._buildBody();
     this._buildInterior();
     this._buildSeat();
@@ -325,6 +368,9 @@ export class Ex60Scene {
       ...glazingX.map((x) => [x, ...[1, 2, 3, 4, 5].map((column) => interpolate(x, column))]),
     ].sort((a, b) => a[0] - b[0]);
     const paint = new THREE.MeshPhysicalMaterial({ ...val(d.materials.paint), side: THREE.DoubleSide });
+    const surface = val(visual.reference_remodel).surface;
+    paint.bumpMap = this.paintGrain;
+    paint.bumpScale = surface.paint_bump_mm;
     const inspection = val(visual.inspection_transparency);
     const doorPaint = paint.clone();
     doorPaint.transparent = true;
@@ -409,6 +455,7 @@ export class Ex60Scene {
         return [cornerX(x, height), side * sideWidth(x, z), z];
       }, [paint, doorPaint], (a, b) => a >= inspection.door_x_min && b <= inspection.door_x_max ? 1 : 0);
       sidePanel.name = `painted_side_panel_${side}`;
+      surfaceUV(sidePanel, [surface.paint_tile_mm, surface.paint_tile_mm], ['x', 'z']);
       body.add(sidePanel);
     }
 
@@ -440,10 +487,12 @@ export class Ex60Scene {
     };
     const hood = gridSurface(xs.filter((x) => x <= val(d.hood_end_x)), val(d.deck_rows), deckPoint, paint);
     hood.name = 'sculpted_hood';
+    surfaceUV(hood, [surface.paint_tile_mm, surface.paint_tile_mm]);
     body.add(hood);
     const tailDeck = gridSurface(xs.filter((x) => x >= val(d.tail_deck_start_x)), val(d.deck_rows),
       deckPoint, paint);
     tailDeck.name = 'liftgate_upper_shoulder';
+    surfaceUV(tailDeck, [surface.paint_tile_mm, surface.paint_tile_mm]);
     body.add(tailDeck);
     const roof = this.layer('body_roof');
     const roofRows = d.roof_sections;
@@ -700,15 +749,37 @@ export class Ex60Scene {
         if (panel.name === 'front_side' || panel.name === 'rear_side') {
           material.opacity = val(visual.inspection_transparency).door_opacity;
         }
-        const samples = Array.from({ length: val(d.glass_rows) + 1 }, (_, i) => i / val(d.glass_rows));
+        const windscreen = panel.name === 'windshield' ? val(visual.reference_remodel).windscreen : null;
+        const rows = windscreen ? windscreen.rows : val(d.glass_rows);
+        const columns = windscreen ? windscreen.columns : val(d.glass_rows);
+        const samples = Array.from({ length: columns + 1 }, (_, i) => i / columns);
         const normal = new THREE.Vector3().crossVectors(points[1].clone().sub(points[0]), points[3].clone().sub(points[0])).normalize();
         if (panel.mirror_y && normal.y * sign < 0 || !panel.mirror_y && normal.z < 0) normal.negate();
-        const mesh = gridSurface(samples, val(d.glass_rows), (u, t) => {
+        const surface = (u, t) => {
           const a = points[0].clone().lerp(points[1], u), b = points[3].clone().lerp(points[2], u);
-          return a.lerp(b, t).addScaledVector(normal, val(d.glass_bow_mm) * Math.sin(Math.PI * u) * Math.sin(Math.PI * t)).toArray();
-        }, material);
+          return a.lerp(b, t).addScaledVector(normal,
+            (windscreen ? windscreen.bow_mm : val(d.glass_bow_mm)) * Math.sin(Math.PI * u) * Math.sin(Math.PI * t));
+        };
+        const mesh = gridSurface(samples, rows, (u, t) => surface(u, t).toArray(),
+          windscreen ? new THREE.MeshPhysicalMaterial({
+            ...windscreen.material, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+          }) : material);
         mesh.name = `${panel.name}_${sign}`;
         glazing.add(mesh);
+        if (windscreen) {
+          const trim = new THREE.MeshStandardMaterial({ ...windscreen.surround_material, side: THREE.DoubleSide });
+          for (let edge = 0; edge < 4; edge++) {
+            const surround = gridSurface(samples, 2, (u, t) => {
+              const inset = t * windscreen.surround_fraction;
+              const coordinates = [
+                [u, inset], [1 - inset, u], [1 - u, 1 - inset], [inset, 1 - u],
+              ][edge];
+              return surface(...coordinates).addScaledVector(normal, windscreen.surround_offset_mm).toArray();
+            }, trim);
+            surround.name = `windscreen_matched_surround_${edge}`;
+            glazing.add(surround);
+          }
+        }
       }
     }
     for (const stroke of visual.strokes) {
@@ -733,30 +804,65 @@ export class Ex60Scene {
 
   _buildDashboard() {
     const d = this.spec.visual_reconstruction.dashboard, g = this.layer('cabin_details');
+    const remodel = val(this.spec.visual_reconstruction.reference_remodel), surface = remodel.surface;
     const materials = Object.fromEntries(Object.entries(d.materials).map(([name, parameters]) => [
       name, new THREE.MeshStandardMaterial(parameters),
     ]));
     const woodCanvas = document.createElement('canvas');
-    woodCanvas.width = 256;
-    woodCanvas.height = 64;
+    [woodCanvas.width, woodCanvas.height] = surface.wood_size;
     const context = woodCanvas.getContext('2d');
     if (!context) throw new Error('Canvas 2D context is required for dashboard trim.');
-    context.fillStyle = '#9b8973';
-    context.fillRect(0, 0, 256, 64);
-    for (let i = 0; i < 90; i++) {
+    context.fillStyle = surface.wood_base;
+    context.fillRect(0, 0, ...surface.wood_size);
+    for (let i = 0; i < surface.wood_lines; i++) {
       const shade = Math.round(100 + 35 * Math.sin(i * 2.7));
-      context.strokeStyle = `rgba(${shade},${shade},${shade},0.22)`;
+      context.strokeStyle = `rgba(${shade},${shade},${shade},${surface.wood_alpha})`;
       context.beginPath();
-      context.moveTo(i * 2.9, 0);
-      context.bezierCurveTo(i * 2.9 + 3, 20, i * 2.9 - 3, 40, i * 2.9 + 1, 64);
+      const y = i * woodCanvas.height / surface.wood_lines;
+      context.moveTo(0, y);
+      context.bezierCurveTo(woodCanvas.width / 3, y + Math.sin(i) * 3,
+        woodCanvas.width * 2 / 3, y - Math.sin(i) * 3, woodCanvas.width, y);
       context.stroke();
     }
     const woodTexture = new THREE.CanvasTexture(woodCanvas);
     woodTexture.colorSpace = THREE.SRGBColorSpace;
+    woodTexture.wrapS = woodTexture.wrapT = THREE.RepeatWrapping;
     materials.wood.map = woodTexture;
+    materials.wood.bumpMap = woodTexture;
+    materials.wood.bumpScale = surface.wood_bump_mm;
+    materials.upper.bumpMap = this.fineWeave;
+    materials.upper.bumpScale = surface.fabric_bump_mm;
+    materials.lower.bumpMap = this.fineWeave;
+    materials.lower.bumpScale = surface.plastic_bump_mm;
     for (const part of d.fascia) {
-      const mesh = profilePrism(part.profile_xz, val(part.width), val(part.corner_radius), materials[part.material]);
+      const sweep = remodel.fascia_sweep;
+      const rings = Array.from({ length: sweep.segments + 1 }, (_, i) => {
+        const lateral = 2 * i / sweep.segments - 1;
+        return [lateral * val(part.width) / 2, 1, 1,
+          -sweep.edge_forward_mm * (part.sweep_ratio ?? 1) * lateral ** 2, sweep.center_crown_mm * (1 - lateral ** 2)];
+      });
+      const profile = [...part.profile_xz];
+      const area = profile.reduce((sum, p, i) => {
+        const q = profile[(i + 1) % profile.length];
+        return sum + p[0] * q[1] - q[0] * p[1];
+      }, 0);
+      if (area < 0) profile.reverse();
+      const mesh = contourSolid(profile, rings, val(part.corner_radius), materials[part.material]);
+      mesh.geometry.rotateX(Math.PI / 2);
+      const tile = part.material === 'wood' ? surface.wood_tile_mm : [surface.fabric_tile_mm, surface.fabric_tile_mm];
+      surfaceUV(mesh, tile, ['y', 'z']);
       mesh.name = part.name;
+      g.add(mesh);
+    }
+    const shelf = remodel.dim_shelf;
+    for (const [name, size, center] of [
+      ['dim_forward_shelf', shelf.size, shelf.center],
+      ['dim_shelf_support', shelf.support_size, shelf.support_center],
+    ]) {
+      const mesh = roundedBox(size, shelf.radius, materials.upper);
+      mesh.name = name;
+      mesh.position.copy(V(center));
+      surfaceUV(mesh, [surface.fabric_tile_mm, surface.fabric_tile_mm]);
       g.add(mesh);
     }
     const console = d.console;
@@ -860,6 +966,13 @@ export class Ex60Scene {
     const d = val(this.spec.visual_reconstruction.seat_detail);
     const materials = Object.fromEntries(Object.entries(d.materials).map(([key, properties]) =>
       [key, new THREE.MeshStandardMaterial(properties)]));
+    const surface = val(this.spec.visual_reconstruction.reference_remodel).surface;
+    for (const [key, material] of Object.entries(materials)) {
+      material.bumpMap = key === 'insert' ? this.perforatedWeave : this.fineWeave;
+      material.bumpScale = key === 'insert' ? surface.fabric_bump_mm : surface.upholstery_bump_mm;
+      if (key === 'insert') material.map = this.perforatedWeave;
+    }
+    this.seatMaterials = materials;
     for (const side of [-1, 1]) {
       const rail = box(s.fore_aft_mm.max - s.fore_aft_mm.min + val(d.rails.length), ...d.rails.section, MAT.seatRail);
       const midX = s.sgrp.x + (s.fore_aft_mm.max + s.fore_aft_mm.min) / 2 + val(d.rails.x_offset);
@@ -884,6 +997,8 @@ export class Ex60Scene {
       const points = d.contours[part.contour].map(([x, y]) => [x * size[0], y * size[1]]);
       const rings = d.rings[part.rings].map(([z, sx, sy, dx, dy]) => [z * size[2], sx, sy, dx * size[0], dy * size[1]]);
       const mesh = contourSolid(points, rings, val(part.radius), materials[part.material]);
+      const tile = part.material === 'insert' ? surface.fabric_tile_mm : surface.upholstery_tile_mm;
+      surfaceUV(mesh, [tile, tile]);
       mesh.name = `seat_${part.name}`;
       const frame = new THREE.Group();
       frame.position.copy(V(part.center));
@@ -911,6 +1026,85 @@ export class Ex60Scene {
     g.add(this.seat);
     this.hMarker = new THREE.Mesh(new THREE.SphereGeometry(18, 16, 12), MAT.marker);
     this.layer('markers').add(this.hMarker);
+    this._buildCabinSeating();
+  }
+
+  _buildCabinSeating() {
+    const sp = this.spec, layout = val(sp.visual_reconstruction.cabin_seating);
+    const d = val(sp.visual_reconstruction.seat_detail), surface = val(sp.visual_reconstruction.reference_remodel).surface;
+    const g = this.layer('cabin_seating');
+    const passenger = this.seat.clone(true);
+    passenger.name = 'passenger_static_seat';
+    passenger.position.copy(V(layout.passenger_h_point));
+    passenger.getObjectByName('seat_cushion_tilt_frame').rotation.y = THREE.MathUtils.degToRad(layout.front_cushion_tilt_deg);
+    passenger.getObjectByName('seat_back_recline_frame').rotation.y = THREE.MathUtils.degToRad(layout.front_back_angle_deg);
+    const pedestal = d.pedestal, base = passenger.getObjectByName('seat_height_pedestal');
+    base.scale.z = layout.passenger_h_point[2] - (val(sp.vehicle.floor_z) + pedestal.floor_offset) - pedestal.top_offset;
+    base.position.set(pedestal.x_offset, 0, -base.scale.z / 2 - pedestal.top_offset);
+    g.add(passenger);
+    for (const side of [-1, 1]) {
+      const rail = box(sp.seat.fore_aft_mm.max - sp.seat.fore_aft_mm.min + d.rails.length, ...d.rails.section, MAT.seatRail);
+      rail.name = `passenger_static_rail_${side}`;
+      rail.position.set(layout.passenger_h_point[0] + (sp.seat.fore_aft_mm.min + sp.seat.fore_aft_mm.max) / 2 + d.rails.x_offset,
+        layout.passenger_h_point[1] + side * d.rails.y_offset, val(sp.vehicle.floor_z) + d.rails.floor_offset);
+      rail.rotation.y = THREE.MathUtils.degToRad(-val(sp.seat.rail_angle_deg));
+      g.add(rail);
+    }
+    for (const key of ['rear_base', 'rear_bridge']) {
+      const part = layout[key];
+      const mesh = roundedBox(part.size, part.radius, this.seatMaterials[part.material]);
+      mesh.position.copy(V(part.center));
+      mesh.name = key;
+      surfaceUV(mesh, [surface.upholstery_tile_mm, surface.upholstery_tile_mm]);
+      g.add(mesh);
+    }
+    this.rearSeatBacks = [];
+    for (const [index, y] of layout.rear_centers_y_mm.entries()) {
+      const seat = new THREE.Group(), cushion = new THREE.Group(), back = new THREE.Group();
+      seat.name = `rear_static_seat_${index}`;
+      seat.position.set(layout.rear_x_mm, y, layout.rear_z_mm);
+      cushion.rotation.y = THREE.MathUtils.degToRad(layout.rear_cushion_tilt_deg);
+      back.position.copy(V(d.back_pivot));
+      back.rotation.y = THREE.MathUtils.degToRad(layout.rear_back_angle_deg);
+      for (const part of d.parts) {
+        if (index === layout.rear_armrest.seat_index && layout.rear_center_omitted_parts.includes(part.name)) continue;
+        const metric = { ...layout.rear_envelope[part.metric] };
+        if (part.metric !== 'headrest') metric.width = layout.rear_widths_mm[index];
+        const dimensions = part.metric === 'cushion'
+          ? [metric.length, metric.width, metric.thickness]
+          : [metric.width, metric.height, metric.thickness];
+        const size = dimensions.map((v, i) => v * part.size_ratio[i]);
+        const points = d.contours[part.contour].map(([x, y]) => [x * size[0], y * size[1]]);
+        const rings = d.rings[part.rings].map(([z, sx, sy, dx, dy]) => [z * size[2], sx, sy, dx * size[0], dy * size[1]]);
+        const mesh = contourSolid(points, rings, part.radius, this.seatMaterials[part.material]);
+        const tile = part.material === 'insert' ? surface.fabric_tile_mm : surface.upholstery_tile_mm;
+        surfaceUV(mesh, [tile, tile]);
+        mesh.name = `rear_${index}_${part.name}`;
+        const frame = new THREE.Group();
+        frame.position.copy(V(part.center.map((v, i) => v * layout.rear_part_scale[i])));
+        if (part.metric !== 'cushion') setBasis(frame, [0, 1, 0], [0, 0, 1], [1, 0, 0]);
+        frame.add(mesh);
+        (part.metric === 'cushion' ? cushion : back).add(frame);
+      }
+      seat.add(cushion, back);
+      this.rearSeatBacks.push(back);
+      g.add(seat);
+    }
+    const arm = layout.rear_armrest;
+    const armrest = roundedBox(arm.size, arm.radius, this.seatMaterials.upholstery);
+    armrest.position.copy(V(arm.center));
+    armrest.name = 'rear_center_stowed_armrest';
+    surfaceUV(armrest, [surface.upholstery_tile_mm, surface.upholstery_tile_mm], ['y', 'z']);
+    this.rearSeatBacks[arm.seat_index].add(armrest);
+    const b = layout.buckles, material = new THREE.MeshStandardMaterial({ color: b.color, roughness: 0.65 });
+    for (const row of ['front', 'rear']) {
+      for (const [i, y] of b[`${row}_y_mm`].entries()) {
+        const buckle = roundedBox(b.size, b.radius, material);
+        buckle.name = `${row}_belt_buckle_${i}`;
+        buckle.position.set(b[`${row}_x_mm`], y, b[`${row}_z_mm`]);
+        g.add(buckle);
+      }
+    }
   }
 
   _buildSteering() {

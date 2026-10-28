@@ -216,6 +216,68 @@ If the picker still shows the previous coordinator or specialists, run **Develop
 Change the `model:` lists in
 `.github/agents/*.agent.md` to match the models enabled in your Copilot plan.
 
+## Two-reference cabin remodel (2026-10-28)
+
+The supplied frontal dashboard and top-cabin images inform an **uncalibrated visual
+reconstruction**, not factory CAD. Neither image is embedded or redistributed.
+New parameters live in `data/ex60_spec.json`, with estimate provenance and separate
+source IDs for the two images:
+
+- Slim DIM above the wheel on a raised forward shelf; broad swept fabric fascia,
+  grey wood, central raised speaker, original landscape display graphics.
+- A 32 × 24 shared-vertex windscreen grid with 64 mm central bow and matching curved
+  edge bands; boundaries retain the cowl, A-pillar and roof junctions.
+- Original procedural woven/perforated inserts, light upholstery, fine plastic and
+  paint grain, subtle grey wood, non-metallic windscreen glass with estimated IOR.
+- Symmetric passenger front seat and a continuous three-place rear bench with
+  supported headrests, belt buckles and a stowed center armrest. These are static
+  visual estimates, not passenger CAN channels or validated passenger H-points.
+- Driver adjustment/replay frames, Seat Length, steering and mirror refinements are
+  retained. Doors remain 18% opaque and roof panels 16% opaque for inspection.
+
+The source and packaged Python/JS now share `above_rim` and legacy `through_wheel`
+DIM clearance routes (unknown routes fail explicitly). DIM center is intentionally
+`[680, -370, 1230]` mm with 10° tilt. This supersedes both the legacy source
+`[640, -370, 1075]` / 20° and earlier export-only `[440, -370, 1165]` / 10°.
+The new position is inside the bowed glazing envelope; photo perspective is **not**
+a calibrated placement constraint.
+
+Design DIM margins below are signed vertical wheel-plane clearances in mm, not
+full-screen occlusion, reach, road visibility or regulatory certification:
+
+| Profile | Legacy source | Remodel | Delta |
+|---|---:|---:|---:|
+| p5_female | -1.481 | -8.229 | -6.748 |
+| p50_male | 13.460 | 8.369 | -5.092 |
+| p95_male | -4.544 | 21.068 | 25.612 |
+| adult_medium_female | 9.929 | 0.318 | -9.611 |
+| adult_slim | 13.460 | 8.369 | -5.092 |
+| adult_broad | 13.460 | 8.369 | -5.092 |
+| adult_large_body | 13.460 | 8.369 | -5.092 |
+| teen_small | -9.836 | -14.277 | -4.442 |
+| teen_tall | 12.041 | 2.041 | -10.001 |
+
+Negative margins still flag the small adult and small teenage illustrative profiles.
+Every other design metric is unchanged for all nine profiles; measurements are
+needed before making visibility or occupant-fit decisions.
+
+Validation:
+```powershell
+python -m unittest discover -s tests -t .
+python -m ergo3d design
+python tools\validate_reference_remodel.py --out reports\reference-remodel
+powershell -File tools\refresh_exports.ps1
+```
+The browser check uses a fresh bounded localhost server and isolated disposable
+project-local Chrome profile, renders exterior/dashboard/top/seats/upholstery views,
+checks curved glass/trim topology, mirror normals and driver versus static seating,
+and compares Python/JS metrics in both DIM modes. An optional pre-existing
+`baseline-metrics.json` in the output folder enables all-nine metric delta checks.
+Build staging stays inside the project and is removed after bundling.
+`refresh_exports.ps1` copies the Python package, spec, browser files, mapping and
+README into the desktop folder, verifies source parity, then rebuilds standalone
+HTML, local Teams package, ZIPs and SHA256 manifests. It does not publish remotely.
+
 ## Data provenance – read this
 Volvo's websites block automated retrieval, and Volvo has published **no EX60 interior package
 dimensions** (seat travel, SgRP, column geometry or mirror positions).

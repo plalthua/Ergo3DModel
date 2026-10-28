@@ -211,6 +211,7 @@ const layerLabels = {
   body_glazing: 'glazing',
   exterior_details: 'exterior trim and lamps',
   cabin_details: 'dashboard and console details',
+  cabin_seating: 'passenger and rear bench (static visual estimates)',
   r46_zones: 'R46 ground zones',
 };
 for (const name of Object.keys(car.layers)) {
