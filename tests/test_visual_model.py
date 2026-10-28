@@ -9,6 +9,32 @@ SPEC = json.loads((ROOT / "data" / "ex60_spec.json").read_text(encoding="utf-8")
 
 
 class VisualModelSpec(unittest.TestCase):
+    def test_steering_detail_is_bounded_and_estimate_sourced(self):
+        trim = SPEC["visual_reconstruction"]["dashboard"]["steering_trim"]
+        self.assertEqual(trim["confidence"], "estimate")
+        self.assertEqual(trim["source"], "local_gallery_visual")
+        self.assertIn("circular", trim["note"])
+        rim = trim["rim"]
+        self.assertTrue(2 < rim["superellipse_exponent"] < 4)
+        self.assertTrue(72 <= rim["segments"] <= 240)
+        self.assertTrue(12 <= rim["cross_segments"] <= 32)
+        self.assertEqual(rim["depth_ratio"], 1)
+        self.assertTrue(0 < trim["grain"]["size"] <= 256)
+        self.assertGreater(trim["grain"]["tile_mm"], 0)
+        self.assertTrue(0 < trim["seam"]["stitch_count"] <= 300)
+        self.assertTrue(0 < trim["seam"]["stitch_length_ratio"] < 1)
+        for material in trim["materials"].values():
+            self.assertTrue(0 <= material["roughness"] <= 1)
+            self.assertTrue(0 <= material["metalness"] <= 1)
+        self.assertGreater(trim["materials"]["leather"]["bumpScale"], 0)
+        for key in ("hub_rings", "accent_rings", "spoke_rings", "control_rings", "rocker_rings"):
+            rings = trim[key]
+            self.assertEqual([r[0] for r in rings], sorted(r[0] for r in rings))
+            self.assertTrue(all(len(r) == 5 and all(math.isfinite(v) for v in r) for r in rings))
+        radius = SPEC["steering"]["rim_diameter"]["value"] / 2
+        self.assertTrue(all(abs(p[0]) < radius and abs(p[1]) < radius
+                            for p in trim["lower_open_trim"]))
+
     def test_inspection_transparency_is_see_through_and_localized(self):
         visual = SPEC["visual_reconstruction"]
         inspection = visual["inspection_transparency"]["value"]

@@ -123,6 +123,16 @@ No external upload, hosting deployment or live web link has been created.
   was also retrieved for general vehicle context, not seat/mirror dimensions.
   The official Volvo UK EX60 page returned HTTP 403. No measured upholstery, glass contour,
   mirror curvature or hidden mount data was available; all new visual dimensions remain **estimates**.
+- **Steering detail**: rounded-square tubular rim with flatter top/bottom, warm light leather
+  on the inner/front surfaces and dark outer/rear leather, original procedural bump/roughness
+  grain, physical cross-stitches, tapered cushion/back shell, narrow satin accents, blank circular
+  badge, two short spokes with raised control islands/rockers/buttons and open lower trim.
+  All detail follows the existing tilt, telescope and logged wheel spin, without per-frame rebuilding.
+  Parameters and estimate provenance are in `visual_reconstruction.dashboard.steering_trim`.
+  Local `dashboard1.png`, `interior-gallery-6.webp` and gallery `01` cockpit guide the visual
+  interpretation; no photo texture, trademark logo or copied control artwork is embedded.
+  The visual contour preserves the original rim's cardinal grip centers and XY envelope; the
+  ergonomic model still uses its unchanged circular grip assumptions, radius, center and normal.
 - **Visuals are estimates, not package data.** The reconstruction uses local CarImage references and cited press imagery only as visual guides; it is not photorealistic or dimensionally verified. The screens use generic procedural graphics, and the added visual geometry does not change ergonomic hardpoints, adjustment ranges or calculated metrics. See `visual_reconstruction` and `meta.data_gaps` in [the spec](data/ex60_spec.json) for provenance and unknowns. No third-party photos are embedded.
 - **Driver body profiles**: select a silhouette card in the menu over the 3D scene, or use the
   Occupant dropdown. Nine illustrative profiles include small/medium/tall adults, medium adult

@@ -70,6 +70,7 @@
       "All driver body profiles, including percentile-labelled adults and teenage examples, are illustrative estimates. Obtain validated anthropometry or individual measurements; no preset represents every person of an age, sex or body type.",
       "Interior room (headroom, legroom, shoulder/hip room), H-point height: not published for EX60 - all seat/package coordinates are estimates.",
       "Seat adjustment ranges, steering wheel diameter and tilt/telescope ranges: not published - estimates.",
+      "Steering visual refinement uses dashboard1.png, interior-gallery-6.webp and gallery 01 cockpit: rounded-square rim, two-tone leather, layered cushion, short control spokes and open lower trim. Contour, cross-section, stitches, material grain and control dimensions are original unmeasured estimates, not factory CAD or production trim verification. Blank badge and generic switches intentionally omit trademark and UI artwork. Circular ergonomic grip assumptions and the design wheel radius/hardpoints are unchanged.",
       "Mirror glass sizes and positions: not published - estimates.",
       "Seat upholstery contours, headrest support, seams and mirror shell/glass outlines are original visual estimates, not photo-derived measurements. Local gallery 08 shows a tapered headrest with concealed support and shoulder panels; gallery 09 shows the exterior mirror cap/arm; gallery 01 shows the interior mirror. Exact trim variants, hidden mounts and mirror curvature remain unknown. Optional headrest speakers are reported by Car and Driver but are not modelled.",
       "Exterior refinement inspected local gallery 02 (front three-quarter), 03 (full side), 05 (rear three-quarter), 09 (hammer light/hood detail), dashboard1.png and the cabin contact-sheet views 01/06/07/08. Observations: curved hood edges, concave lower doors, smooth closed nose, dark lower intake, split rear lamp groups and a continuous window/roof envelope. All section offsets, lamp sizes, panel curvature and finish settings remain unmeasured estimates; inspection transparency deliberately prevents production-appearance evaluation. Public Car and Driver text corroborates the smooth nose, hammer DRLs, tapered sides and sloping roof. Ars text was read for context, not used to change measured dimensions. No photogrammetry, factory CAD or production trim match.",
@@ -416,13 +417,15 @@
       "w": 300,
       "h": 70,
       "center": {
-        "x": 640,
+        "x": 440,
         "y": -370,
-        "z": 1075
+        "z": 1165
       },
-      "tilt_deg": 20,
+      "tilt_deg": 10,
+      "visibility_mode": "above_rim",
       "confidence": "estimate",
-      "note": "Thin instrument cluster mounted above dashboard"
+      "source": "local_gallery_visual",
+      "note": "DIM moved forward and raised above the dashboard, aligned with the driver, from dashboard1.png and interior-gallery-6.webp. Position and tilt are uncalibrated visual estimates; visibility is evaluated above the outer steering rim, not through the wheel opening."
     }
   },
   "pedals": {
@@ -2157,28 +2160,87 @@
         ]
       },
       "steering_trim": {
-        "hub_size": [
-          218,
-          132,
-          45
-        ],
-        "hub_center": [
-          0,
-          -10,
-          -12
-        ],
-        "hub_radius": 30,
-        "switch_size": [
-          56,
-          38,
-          10
-        ],
-        "switch_offset": [
-          126,
-          -3,
-          2
-        ],
-        "switch_radius": 9
+        "confidence": "estimate",
+        "source": "local_gallery_visual",
+        "note": "Original visual interpretation of dashboard1.png, interior-gallery-6.webp and gallery 01 cockpit. Unmeasured rounded-square contour, leather grain, seams and controls; no logo or photo texture. Rim centerline retains the design radius at cardinal grips and the original +/- (radius + half thickness) envelope; ergonomic grip calculations remain circular. Local +Z faces the driver along the unchanged steering axis (+X component).",
+        "rim": {
+          "superellipse_exponent": 2.8,
+          "segments": 160,
+          "cross_segments": 24,
+          "depth_ratio": 1,
+          "dark_outer_threshold": 0.35,
+          "dark_rear_threshold": -0.35
+        },
+        "grain": {
+          "size": 128,
+          "seed": 617,
+          "tile_mm": 24,
+          "base": 180,
+          "amplitude": 48,
+          "pore_threshold": 0.91,
+          "pore_depth": 72
+        },
+        "materials": {
+          "leather": {"color": "#c5bfaf", "roughness": 0.82, "metalness": 0, "bumpScale": 0.16},
+          "dark_leather": {"color": "#26292a", "roughness": 0.8, "metalness": 0, "bumpScale": 0.13},
+          "shell": {"color": "#1d2225", "roughness": 0.56, "metalness": 0.05},
+          "controls": {"color": "#303638", "roughness": 0.4, "metalness": 0.08},
+          "switch": {"color": "#a9aba6", "roughness": 0.37, "metalness": 0.34},
+          "metal": {"color": "#b9bfbe", "roughness": 0.27, "metalness": 0.85},
+          "badge": {"color": "#8f9692", "roughness": 0.4, "metalness": 0.55},
+          "thread": {"color": "#8c897e", "roughness": 0.95, "metalness": 0}
+        },
+        "hub_size": [208, 132, 45],
+        "hub_center": [0, -8, -8],
+        "hub_radius": 24,
+        "hub_outline": [[-0.5,-0.3],[-0.36,-0.5],[0.36,-0.5],[0.5,-0.3],[0.5,0.34],[0.36,0.5],[-0.36,0.5],[-0.5,0.34]],
+        "hub_rings": [[-22.5,0.89,0.87,0,0],[-17,1,1,0,0],[12,1,1,0,0],[19,0.96,0.95,0,0],[22.5,0.87,0.85,0,0]],
+        "backplate_size": [222, 146, 32],
+        "backplate_center": [0, -8, -15],
+        "accent_size": [213, 137, 8],
+        "accent_center": [0, -8, 3],
+        "accent_rings": [[-4,0.96,0.95,0,0],[-2,1,1,0,0],[2,1,1,0,0],[4,0.97,0.96,0,0]],
+        "spoke_outline": [[80,-45],[150,-37],[169,-9],[161,38],[95,46]],
+        "spoke_rings": [[-24,0.92,0.9,0,0],[-19,1,1,0,0],[0,1,1,0,0],[6,0.95,0.92,0,0]],
+        "spoke_radius": 13,
+        "switch_size": [42, 75, 9],
+        "switch_offset": [129, -2, 8],
+        "switch_radius": 9,
+        "control_rings": [[-4.5,0.9,0.91,0,0],[-2,1,1,0,0],[2,1,1,0,0],[4.5,0.9,0.91,0,0]],
+        "rocker_size": [18, 19, 5],
+        "rocker_radius": 5,
+        "rocker_offset": [0, 7, 6],
+        "rocker_rings": [[-2.5,0.8,0.8,0,0],[-1,1,1,0,0],[1,1,1,0,0],[2.5,0.8,0.8,0,0]],
+        "button_radius": 3.2,
+        "button_depth": 2,
+        "button_offsets": [[-9,-23,5.5],[9,-23,5.5]],
+        "control_ring_radius": 4.8,
+        "control_ring_tube": 0.5,
+        "control_ring_z": 9,
+        "control_separator": [[-18,-12,5],[18,-12,5]],
+        "control_separator_radius": 0.4,
+        "lower_open_trim": [[-151,-34,-10],[-128,-62,-6],[-73,-88,-3],[0,-93,-3],[73,-88,-3],[128,-62,-6],[151,-34,-10]],
+        "lower_trim_radius": 5,
+        "lower_accent_offset": [0,-5,1],
+        "lower_accent_radius": 1.1,
+        "trim_segments": 64,
+        "trim_radial_segments": 8,
+        "badge_center": [0, -6, 16],
+        "badge_radius": 22,
+        "badge_depth": 2.6,
+        "badge_rim_tube": 1.25,
+        "badge_segments": 48,
+        "seam": {
+          "cross_angle_deg": 155,
+          "lift_mm": 0.35,
+          "radius_mm": 0.45,
+          "stitch_count": 220,
+          "stitch_length_ratio": 0.48,
+          "cross_span_deg": 9,
+          "radial_segments": 5
+        },
+        "column_radii": [38, 48],
+        "column_segments": 20
       }
     },
     "seat_detail": {

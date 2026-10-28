@@ -916,30 +916,211 @@ export class Ex60Scene {
   _buildSteering() {
     const st = this.spec.steering, g = this.layer('steering');
     const R = val(st.rim_diameter) / 2, T = val(st.rim_thickness) / 2;
+    const trim = this.spec.visual_reconstruction.dashboard.steering_trim;
     this.wheelFrame = new THREE.Group();
     this.wheelSpin = new THREE.Group();
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(R, T, 18, 72), MAT.wheel);
-    const trim = this.spec.visual_reconstruction.dashboard.steering_trim;
-    const hub = roundedBox(trim.hub_size, val(trim.hub_radius), MAT.dash);
-    hub.position.copy(V(trim.hub_center));
-    this.wheelSpin.add(rim, hub);
-    for (const ang of [0, Math.PI, -Math.PI / 2]) {
-      const spoke = box(R - 60, 34, 16, MAT.wheel);
-      spoke.position.set(Math.cos(ang) * (R / 2 + 25), Math.sin(ang) * (R / 2 + 25), -12);
-      spoke.rotation.z = ang;
-      this.wheelSpin.add(spoke);
+    this.wheelFrame.name = 'steering_frame';
+    this.wheelSpin.name = 'steering_spin';
+
+    // Deterministic, original leather height/roughness grain; no photographic assets.
+    const grain = trim.grain, pixels = new Uint8Array(val(grain.size) ** 2 * 4);
+    let seed = val(grain.seed);
+    for (let i = 0; i < pixels.length; i += 4) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const noise = seed / 4294967296;
+      const shade = val(grain.base) + (noise - 0.5) * val(grain.amplitude) -
+        (noise > val(grain.pore_threshold) ? val(grain.pore_depth) : 0);
+      pixels[i] = pixels[i + 1] = pixels[i + 2] = shade;
+      pixels[i + 3] = 255;
     }
+    const grainMap = new THREE.DataTexture(pixels, val(grain.size), val(grain.size));
+    grainMap.name = 'steering_procedural_leather_grain';
+    grainMap.wrapS = grainMap.wrapT = THREE.RepeatWrapping;
+    grainMap.magFilter = THREE.LinearFilter;
+    grainMap.minFilter = THREE.LinearMipmapLinearFilter;
+    grainMap.generateMipmaps = true;
+    grainMap.needsUpdate = true;
+    const materials = Object.fromEntries(Object.entries(trim.materials).map(([name, settings]) => {
+      const material = new THREE.MeshStandardMaterial(settings);
+      material.name = `steering_${name}`;
+      if (name === 'leather' || name === 'dark_leather') {
+        material.bumpMap = grainMap;
+        material.roughnessMap = grainMap;
+      }
+      return [name, material];
+    }));
+    const addSolid = (name, points, rings, radius, material, center) => {
+      const mesh = contourSolid(points, rings, val(radius), material);
+      mesh.name = `steering_${name}`;
+      mesh.position.copy(V(center));
+      const positions = mesh.geometry.getAttribute('position'), uv = [];
+      for (let i = 0; i < positions.count; i++) {
+        uv.push(positions.getX(i) / val(grain.tile_mm), positions.getY(i) / val(grain.tile_mm));
+      }
+      mesh.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      // Loft derivatives keep a soft cushion highlight independent of cap triangulation.
+      const count = positions.count / rings.length, normals = [];
+      const point = (r, i) => new THREE.Vector3().fromBufferAttribute(positions, r * count + (i + count) % count);
+      for (let r = 0; r < rings.length; r++) {
+        for (let i = 0; i < count; i++) {
+          const normal = r === 0 ? new THREE.Vector3(0, 0, -1) :
+            r === rings.length - 1 ? new THREE.Vector3(0, 0, 1) :
+              point(r, i + 1).sub(point(r, i - 1))
+                .cross(point(r + 1, i).sub(point(r - 1, i))).normalize();
+          normals.push(...normal.toArray());
+        }
+      }
+      mesh.geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      this.wheelSpin.add(mesh);
+      return mesh;
+    };
+    const outline = (size) => trim.hub_outline.map(([x, y]) => [x * size[0], y * size[1]]);
+    const shellRings = trim.hub_rings.map(([z, ...rest]) =>
+      [z * trim.backplate_size[2] / trim.hub_size[2], ...rest]);
+    addSolid('hub_back_shell', outline(trim.backplate_size), shellRings,
+      trim.hub_radius, materials.shell, trim.backplate_center);
+    addSolid('hub_satin_accent', outline(trim.accent_size), trim.accent_rings,
+      trim.hub_radius, materials.metal, trim.accent_center);
+    addSolid('hub_cushion', outline(trim.hub_size), trim.hub_rings,
+      trim.hub_radius, materials.leather, trim.hub_center);
+
+    // Polar superellipse keeps the cardinal grip centers and original XY envelope.
+    const d = trim.rim, n = val(d.segments), m = val(d.cross_segments);
+    const centerAt = (t) => {
+      const c = Math.cos(t), s = Math.sin(t), exponent = val(d.superellipse_exponent);
+      const radius = R / (Math.abs(c) ** exponent + Math.abs(s) ** exponent) ** (1 / exponent);
+      return new THREE.Vector3(radius * c, radius * s, 0);
+    };
+    const frameAt = (t) => {
+      const delta = Math.PI * 2 / n;
+      const tangent = centerAt(t + delta).sub(centerAt(t - delta)).normalize();
+      return { center: centerAt(t), outward: new THREE.Vector3(tangent.y, -tangent.x, 0) };
+    };
+    const surfaceAt = (t, phi, lift = 0) => {
+      const { center, outward } = frameAt(t);
+      return center.addScaledVector(outward, (T + lift) * Math.cos(phi))
+        .add(new THREE.Vector3(0, 0, (T * val(d.depth_ratio) + lift) * Math.sin(phi)));
+    };
+    const positions = [], uv = [], groups = [[], []];
+    let distance = 0, previous = centerAt(0);
+    for (let i = 0; i <= n; i++) {
+      const t = i / n * Math.PI * 2, center = centerAt(t);
+      distance += center.distanceTo(previous);
+      previous = center;
+      for (let j = 0; j <= m; j++) {
+        const phi = j / m * Math.PI * 2;
+        positions.push(...surfaceAt(t, phi).toArray());
+        uv.push(distance / val(grain.tile_mm), phi * T / val(grain.tile_mm));
+        if (i === n || j === m) continue;
+        const middle = (j + 0.5) / m * Math.PI * 2;
+        const dark = Math.cos(middle) > val(d.dark_outer_threshold) ||
+          Math.sin(middle) < val(d.dark_rear_threshold);
+        const a = i * (m + 1) + j, b = a + m + 1;
+        groups[dark ? 1 : 0].push(a, b, a + 1, b, b + 1, a + 1);
+      }
+    }
+    const rimGeometry = new THREE.BufferGeometry();
+    rimGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    rimGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    rimGeometry.setIndex(groups.flat());
+    rimGeometry.addGroup(0, groups[0].length, 0);
+    rimGeometry.addGroup(groups[0].length, groups[1].length, 1);
+    // Analytic tube normals avoid a lighting seam at the duplicated UV edges.
+    const normals = [];
+    for (let i = 0; i <= n; i++) {
+      const { outward } = frameAt(i / n * Math.PI * 2);
+      for (let j = 0; j <= m; j++) {
+        const phi = j / m * Math.PI * 2;
+        normals.push(...outward.clone().multiplyScalar(Math.cos(phi))
+          .add(new THREE.Vector3(0, 0, Math.sin(phi) / val(d.depth_ratio))).normalize().toArray());
+      }
+    }
+    rimGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    const rim = new THREE.Mesh(rimGeometry, [materials.leather, materials.dark_leather]);
+    rim.name = 'steering_rounded_square_rim';
+    this.wheelSpin.add(rim);
+
+    const rectangle = (size) => [
+      [-size[0] / 2, -size[1] / 2], [size[0] / 2, -size[1] / 2],
+      [size[0] / 2, size[1] / 2], [-size[0] / 2, size[1] / 2],
+    ];
     for (const sign of [-1, 1]) {
-      const buttons = roundedBox(trim.switch_size, val(trim.switch_radius), MAT.housing);
-      buttons.position.copy(V(trim.switch_offset));
-      buttons.position.x *= sign;
-      this.wheelSpin.add(buttons);
+      const spoke = addSolid(`spoke_${sign}`, trim.spoke_outline, trim.spoke_rings,
+        trim.spoke_radius, materials.leather, [0, 0, 0]);
+      spoke.scale.x = sign;
+      const center = [...trim.switch_offset];
+      center[0] *= sign;
+      addSolid(`control_island_${sign}`, rectangle(trim.switch_size), trim.control_rings,
+        trim.switch_radius, materials.controls, center);
+      const rockerCenter = V(center).add(V(trim.rocker_offset));
+      addSolid(`rocker_${sign}`, rectangle(trim.rocker_size), trim.rocker_rings,
+        trim.rocker_radius, materials.switch, rockerCenter.toArray());
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(val(trim.control_ring_radius),
+        val(trim.control_ring_tube), val(trim.trim_radial_segments), val(trim.badge_segments)), materials.metal);
+      ring.name = `steering_generic_control_ring_${sign}`;
+      ring.position.copy(rockerCenter);
+      ring.position.z = center[2] + val(trim.control_ring_z);
+      this.wheelSpin.add(ring);
+      for (const [i, offset] of trim.button_offsets.entries()) {
+        const button = new THREE.Mesh(new THREE.CylinderGeometry(val(trim.button_radius),
+          val(trim.button_radius), val(trim.button_depth), val(trim.badge_segments)), materials.switch);
+        button.name = `steering_button_${sign}_${i}`;
+        button.rotation.x = Math.PI / 2;
+        button.position.copy(V(center).add(V(offset)));
+        this.wheelSpin.add(button);
+      }
+      const separator = new THREE.Mesh(new THREE.TubeGeometry(
+        new THREE.LineCurve3(...trim.control_separator.map((p) => V(center).add(V(p)))),
+        1, val(trim.control_separator_radius), val(trim.trim_radial_segments), false), materials.shell);
+      separator.name = `steering_control_separator_${sign}`;
+      this.wheelSpin.add(separator);
     }
-    const tdc = box(10, 26, T * 2 + 2, new THREE.MeshBasicMaterial({ color: 0xff9900 }));
-    tdc.position.set(0, R, 0);
-    this.wheelSpin.add(tdc); // 12 o'clock marker shows wheel angle
+    for (const accent of [false, true]) {
+      const offset = accent ? V(trim.lower_accent_offset) : new THREE.Vector3();
+      const path = new THREE.CatmullRomCurve3(trim.lower_open_trim.map((p) => V(p).add(offset)));
+      const mesh = new THREE.Mesh(new THREE.TubeGeometry(path, val(trim.trim_segments),
+        val(accent ? trim.lower_accent_radius : trim.lower_trim_radius),
+        val(trim.trim_radial_segments), false), accent ? materials.metal : materials.shell);
+      mesh.name = accent ? 'steering_lower_satin_accent' : 'steering_lower_open_trim';
+      this.wheelSpin.add(mesh);
+    }
+    const badge = new THREE.Mesh(new THREE.CylinderGeometry(val(trim.badge_radius), val(trim.badge_radius),
+      val(trim.badge_depth), val(trim.badge_segments)), materials.badge);
+    badge.name = 'steering_blank_badge';
+    badge.rotation.x = Math.PI / 2;
+    badge.position.copy(V(trim.badge_center));
+    const badgeRim = new THREE.Mesh(new THREE.TorusGeometry(val(trim.badge_radius),
+      val(trim.badge_rim_tube), val(trim.trim_radial_segments), val(trim.badge_segments)), materials.metal);
+    badgeRim.name = 'steering_badge_satin_ring';
+    badgeRim.position.copy(badge.position);
+    badgeRim.position.z += val(trim.badge_depth) / 2;
+    this.wheelSpin.add(badge, badgeRim);
+
+    // One instanced draw for the physical cross-stitches, never rebuilt on replay.
+    const seam = trim.seam, count = val(seam.stitch_count);
+    const stitches = new THREE.InstancedMesh(new THREE.CylinderGeometry(val(seam.radius_mm),
+      val(seam.radius_mm), 1, val(seam.radial_segments)), materials.thread, count);
+    stitches.name = 'steering_rim_cross_stitches';
+    const dummy = new THREE.Object3D(), axis = new THREE.Vector3(0, 1, 0);
+    const phi = THREE.MathUtils.degToRad(val(seam.cross_angle_deg));
+    const span = THREE.MathUtils.degToRad(val(seam.cross_span_deg));
+    for (let i = 0; i < count; i++) {
+      const t = i / count * Math.PI * 2;
+      const start = surfaceAt(t, phi - span / 2, val(seam.lift_mm));
+      const end = surfaceAt(t + Math.PI * 2 / count * val(seam.stitch_length_ratio),
+        phi + span / 2, val(seam.lift_mm));
+      const direction = end.clone().sub(start);
+      dummy.position.copy(start).add(end).multiplyScalar(0.5);
+      dummy.quaternion.setFromUnitVectors(axis, direction.clone().normalize());
+      dummy.scale.set(1, direction.length(), 1);
+      dummy.updateMatrix();
+      stitches.setMatrixAt(i, dummy.matrix);
+    }
+    stitches.instanceMatrix.needsUpdate = true;
+    this.wheelSpin.add(stitches);
     this.wheelFrame.add(this.wheelSpin);
-    this.column = new THREE.Mesh(new THREE.CylinderGeometry(38, 48, 1, 20), MAT.trim);
+    this.column = new THREE.Mesh(new THREE.CylinderGeometry(...trim.column_radii, 1,
+      val(trim.column_segments)), MAT.trim);
     g.add(this.wheelFrame, this.column);
   }
 

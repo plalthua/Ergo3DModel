@@ -229,15 +229,18 @@ def driver_display_edges(spec: dict) -> Tuple[Vec, Vec]:
 
 
 def cluster_sightline_margin(spec: dict, adj: Adjustments, manikin: str) -> float:
-    """How far (mm) the eye->driver-display sightlines stay inside the wheel opening.
+    """Signed clearance of display-edge sightlines through or above the wheel.
 
-    The sightlines to the display top and bottom edges are intersected with the
-    wheel plane; each must pass below the rim's inner edge and above the hub.
-    Returns the smallest margin; negative = rim or hub obstructs the display.
+    The spec selects above_rim or the legacy through_wheel route. This simplified
+    vertical clearance model does not certify full display visibility.
     """
     st = spec["steering"]
     r_inner = _v(st["rim_diameter"]) / 2 - _v(st["rim_thickness"]) / 2
     hub = _v(st.get("hub_radius", 85))
+    mode = spec["displays"]["driver"].get("visibility_mode", "through_wheel")
+    if mode not in ("through_wheel", "above_rim"):
+        raise ValueError(f"Unknown driver display visibility mode: {mode}")
+    r_outer = _v(st["rim_diameter"]) / 2 + _v(st["rim_thickness"]) / 2
     eye = eye_point(spec, adj, manikin)
     wc, ax, up = wheel_center(spec, adj), steering_axis(spec, adj), wheel_up(spec, adj)
     margins = []
@@ -248,7 +251,7 @@ def cluster_sightline_margin(spec: dict, adj: Adjustments, manikin: str) -> floa
             return float("nan")
         p = add(eye, scale(d, dot(sub(wc, eye), ax) / denom))
         s = dot(sub(p, wc), up)
-        margins.append(min(r_inner - s, s - hub))
+        margins.append(s - r_outer if mode == "above_rim" else min(r_inner - s, s - hub))
     return min(margins)
 
 

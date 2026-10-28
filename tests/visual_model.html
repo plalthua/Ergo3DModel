@@ -148,6 +148,81 @@ try {
     closeVector(mesh.parent.position, parameter.center, `Seat detail center changed: ${part}`);
   }
   const limits = K.channelRanges(spec);
+  const steering = spec.visual_reconstruction.dashboard.steering_trim;
+  const wheelRadius = spec.steering.rim_diameter.value / 2;
+  const tubeRadius = spec.steering.rim_thickness.value / 2;
+  const rim = car.wheelSpin.getObjectByName('steering_rounded_square_rim');
+  if (!rim?.isMesh || rim.geometry.type !== 'BufferGeometry' ||
+      rim.geometry.getAttribute('position').count !== (steering.rim.segments + 1) * (steering.rim.cross_segments + 1) ||
+      rim.geometry.groups.length !== 2) throw new Error('Rounded-square two-tone steering rim missing');
+  for (const [index, material] of rim.material.entries()) {
+    const settings = steering.materials[index === 0 ? 'leather' : 'dark_leather'];
+    if (!material.bumpMap?.isDataTexture || material.roughnessMap !== material.bumpMap ||
+        material.bumpScale !== settings.bumpScale || !material.color.equals(new THREE.Color(settings.color)) ||
+        !rim.geometry.getAttribute('uv')) {
+      throw new Error('Procedural steering leather texture is not assigned');
+    }
+  }
+  const rimPositions = rim.geometry.getAttribute('position');
+  for (let i = 0; i < rimPositions.count; i++) {
+    if (Math.abs(rimPositions.getX(i)) > wheelRadius + tubeRadius + 1e-4 ||
+        Math.abs(rimPositions.getY(i)) > wheelRadius + tubeRadius + 1e-4 ||
+        Math.abs(rimPositions.getZ(i)) > tubeRadius + 1e-4) {
+      throw new Error('Steering rim escaped its original design envelope');
+    }
+  }
+  for (let cardinal = 0; cardinal < 4; cardinal++) {
+    const index = cardinal * steering.rim.segments / 4 * (steering.rim.cross_segments + 1);
+    const angle = cardinal * Math.PI / 2;
+    closeVector(new THREE.Vector3().fromBufferAttribute(rimPositions, index),
+      [(wheelRadius + tubeRadius) * Math.cos(angle), (wheelRadius + tubeRadius) * Math.sin(angle), 0],
+      'Steering cardinal grip radius changed');
+  }
+  const diagonal = steering.rim.segments / 8 * (steering.rim.cross_segments + 1);
+  if (Math.hypot(rimPositions.getX(diagonal), rimPositions.getY(diagonal)) <= wheelRadius + tubeRadius + 10) {
+    throw new Error('Steering contour reverted to a circular torus');
+  }
+  const stitches = car.wheelSpin.getObjectByName('steering_rim_cross_stitches');
+  if (!stitches?.isInstancedMesh || stitches.count !== steering.seam.stitch_count ||
+      ![...stitches.instanceMatrix.array].every(Number.isFinite)) {
+    throw new Error('Physical steering rim stitches are missing/invalid');
+  }
+  for (const name of ['hub_cushion', 'hub_back_shell', 'hub_satin_accent', 'blank_badge',
+    'badge_satin_ring', 'lower_open_trim', 'lower_satin_accent',
+    'spoke_-1', 'spoke_1', 'control_island_-1', 'control_island_1',
+    'rocker_-1', 'rocker_1', 'button_-1_0', 'button_1_1']) {
+    if (!car.wheelSpin.getObjectByName(`steering_${name}`)?.isMesh) {
+      throw new Error(`Missing physical steering detail: ${name}`);
+    }
+  }
+  if (car.wheelSpin.getObjectByName('steering_hub_cushion').material.bumpMap !== rim.material[0].bumpMap) {
+    throw new Error('Hub cushion must share the original procedural leather grain');
+  }
+  const geometryBefore = rim.geometry;
+  for (const endpoint of ['min', 'max', 'zero', 'replay']) {
+    const pose = K.designState(spec);
+    for (const channel of ['steer_tilt', 'steer_telescope', 'steer_wheel_angle']) {
+      if (!limits[channel]) throw new Error(`Unknown steering test channel: ${channel}`);
+      pose[channel] = endpoint === 'zero' ? 0 : endpoint === 'replay' ?
+        THREE.MathUtils.lerp(limits[channel].min, limits[channel].max, 0.63) : limits[channel][endpoint];
+    }
+    car.update(pose, 'p50_male');
+    car.root.updateMatrixWorld(true);
+    closeVector(car.wheelFrame.position, K.wheelCenter(spec, pose), 'Steering wheel center changed');
+    closeVector(new THREE.Vector3(0, 0, 1).applyQuaternion(car.wheelFrame.quaternion),
+      K.steeringAxis(spec, pose), 'Driver-facing steering normal changed');
+    if (Math.abs(car.wheelSpin.rotation.z - THREE.MathUtils.degToRad(pose.steer_wheel_angle)) > 1e-8 ||
+        rim.geometry !== geometryBefore) throw new Error('Steering spin/replay rebuilt or detached the detail');
+    car.wheelSpin.traverse((object) => {
+      if (!object.isMesh) return;
+      if (![...object.matrixWorld.elements].every(Number.isFinite)) throw new Error('Non-finite steering transform');
+      const position = object.geometry.getAttribute('position');
+      for (let i = 0; i < position.count; i++) {
+        const world = new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld);
+        if (!world.toArray().every(Number.isFinite)) throw new Error(`Non-finite posed steering vertex: ${object.name}`);
+      }
+    });
+  }
   for (const endpoint of ['min', 'max', 'zero']) {
     const pose = K.designState(spec);
     for (const channel of ['seat_x', 'seat_z', 'seat_cushion_tilt', 'seat_back_angle']) {
@@ -218,12 +293,26 @@ try {
   });
   const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 100);
   const dashboard = new URLSearchParams(location.search).has('dashboard');
+  const steeringView = new URLSearchParams(location.search).has('steering');
   const details = new URLSearchParams(location.search).has('details');
   const view = new URLSearchParams(location.search).get('view');
   for (const name of ['r46_zones', 'sightlines', 'eyellipse', 'markers', 'manikin']) {
     car.layers[name].visible = false;
   }
-  if (details) {
+  if (steeringView) {
+    for (const layer of Object.values(car.layers)) layer.visible = false;
+    car.layers.steering.visible = true;
+    const center = K.wheelCenter(spec, K.designState(spec));
+    const axis = K.steeringAxis(spec, K.designState(spec));
+    const eye = K.add(center, K.scale(axis, 780));
+    if (view === 'oblique') {
+      eye[1] += 300;
+      eye[2] += 100;
+    }
+    camera.position.copy(car.toWorld(eye));
+    camera.up.copy(car.toWorld(K.add(center, K.wheelUp(spec, K.designState(spec))))).sub(car.toWorld(center)).normalize();
+    camera.lookAt(car.toWorld(center));
+  } else if (details) {
     for (const name of ['body', 'body_roof', 'body_glazing', 'exterior_details']) car.layers[name].visible = false;
     camera.position.copy(car.toWorld([-900, -2450, 2150]));
     camera.lookAt(car.toWorld([1120, -270, 950]));
