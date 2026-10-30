@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Local GLB replacement test</title></head>
+<body>
+<pre id="result">RUNNING (requires the private local GLB)</pre>
+<iframe id="viewer" src="../viewer/index.html" style="width:1200px;height:900px"></iframe>
+<script type="module">
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const frame = document.getElementById('viewer');
+const waitFor = async (check) => {
+  for (let i = 0; i < 1200 && !check(); i++) await new Promise((resolve) => setTimeout(resolve, 50));
+  assert(check(), 'Timed out waiting for the local supplied GLB');
+};
+try {
+  await waitFor(() => frame.contentWindow?.ergo?.importedCar.model);
+  const win = frame.contentWindow, doc = frame.contentDocument, e = win.ergo;
+  const get = (id) => doc.getElementById(id);
+  assert(e.glbMode, 'Source viewer must default to the supplied GLB');
+  for (const layer of ['body', 'body_roof', 'wheels', 'body_glazing', 'interior', 'seat', 'steering', 'mirrors', 'manikin']) {
+    assert(!e.car.layers[layer].visible, `Old ${layer} layer must be hidden`);
+  }
+  assert(e.car.layers.imported_vehicle.visible, 'Imported geometry must be visible');
+  let meshes = 0;
+  e.importedCar.model.traverse((object) => { if (object.isMesh) meshes++; });
+  assert(meshes > 0, 'Imported scene must contain meshes');
+  for (const id of ['exportGlb', 'openAllDoors', 'closeAllDoors', 'mirrorPip']) {
+    assert(get(id).disabled, `${id} must not imply validated articulation/export`);
+  }
+  get('inspectionTransparency').checked = true;
+  get('inspectionTransparency').dispatchEvent(new win.Event('change'));
+  assert([...e.importedCar.materials.keys()].every((material) => material.opacity <= .18),
+    'Inspection transparency must affect the imported materials');
+  get('inspectionTransparency').checked = false;
+  get('inspectionTransparency').dispatchEvent(new win.Event('change'));
+  assert([...e.importedCar.materials].every(([material, original]) => material.opacity === original.opacity),
+    'Material opacity must restore exactly');
+  const transforms = [];
+  e.importedCar.model.updateMatrixWorld(true);
+  e.importedCar.model.traverse((object) => transforms.push(object.matrix.toArray()));
+  const allMetrics = () => Object.fromEntries(Object.keys(e.spec.manikins).map((id) =>
+    [id, e.K.ergoMetrics(e.spec, e.state, id)]));
+  const initialMetrics = allMetrics();
+  const visual = get('vehicleVisual');
+  visual.value = 'parametric';
+  visual.dispatchEvent(new win.Event('change'));
+  assert(e.car.layers.body.visible && !e.car.layers.imported_vehicle.visible, 'Explicit parametric switch failed');
+  assert(!get('exportGlb').disabled, 'Parametric export must remain available');
+  assert(JSON.stringify(allMetrics()) === JSON.stringify(initialMetrics),
+    'Visual replacement must not change numeric ergonomics');
+  visual.value = 'glb';
+  visual.dispatchEvent(new win.Event('change'));
+  get('loadSample').click();
+  await waitFor(() => e.timeline);
+  get('scrub').value = e.timeline.t.at(-1);
+  get('scrub').dispatchEvent(new win.Event('input'));
+  const replayTransforms = [];
+  e.importedCar.model.updateMatrixWorld(true);
+  e.importedCar.model.traverse((object) => replayTransforms.push(object.matrix.toArray()));
+  assert(JSON.stringify(transforms) === JSON.stringify(replayTransforms), 'Unbound GLB must stay static during replay');
+  assert(!e.car.layers.seat.visible, 'Replay must not resurrect the old car');
+  assert(get('metrics').textContent.includes('not measured from the displayed GLB'), 'Metrics disclaimer missing');
+  document.getElementById('result').textContent = `PASS: ${meshes} meshes; complete visual replacement, controls, materials, unchanged metrics and static replay`;
+} catch (error) {
+  document.getElementById('result').textContent = `FAIL: ${error.stack || error.message}`;
+}
+</script>
+</body>
+</html>

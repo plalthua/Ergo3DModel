@@ -57,11 +57,12 @@ def bundle_app(viewer: Path, app: str) -> str:
         three.mkdir(parents=True)
         shutil.copyfile(viewer / "vendor" / "three.module.js", three / "index.js")
         (three / "package.json").write_text('{"main":"index.js"}', encoding="utf-8")
-        for addon in ("controls/OrbitControls.js", "exporters/GLTFExporter.js"):
+        for addon in ("controls/OrbitControls.js", "exporters/GLTFExporter.js",
+                      "loaders/GLTFLoader.js", "utils/BufferGeometryUtils.js"):
             target = three / "addons" / addon
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(viewer / "vendor" / "addons" / addon, target)
-        for name in ("kinematics.js", "model.js"):
+        for name in ("kinematics.js", "model.js", "imported-car.js"):
             shutil.copyfile(viewer / name, stage / name)
         (stage / "app.js").write_text(app, encoding="utf-8")
         try:

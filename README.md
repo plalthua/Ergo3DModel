@@ -36,8 +36,28 @@ The server listens only on `127.0.0.1`, so it is not exposed to other PCs on the
 No internet connection is required for the viewer. Do not open the HTML directly using
 `file://`: browser module and data loading require the local HTTP server.
 
+## Local supplied GLB
+The source viewer now defaults to the complete supplied car in
+`CarImage/VCC200_V436_PAC3D_251230_V0_11.glb`, replacing all generated car visuals.
+**View > Vehicle geometry** switches back to the articulated parametric estimates;
+`?model=parametric` also selects them on startup. **Open local GLB** replaces the
+visual with a file selected on this PC. Inspection transparency works on either model.
+
+The supplied GLB is **static**: seat, steering, mirrors and door pivots have not been
+validated or connected to replay. Replay still computes the original parametric
+metrics, not measurements from the imported vehicle. Numeric results are unchanged
+for every body profile. Manikin/sightline overlays start hidden in GLB mode and,
+if explicitly enabled, remain uncalibrated estimates. Units and axle/ground alignment
+are estimates requiring CAD or physical verification; the file does not establish
+EX60 identity or official ergonomic dimensions.
+
+The private GLB stays local and is excluded from all HTML/ZIP sharing packages.
+Portable viewers default to the parametric model; authorized users can select their
+own local GLB without uploading it. GLB redistribution/export and unbound door/mirror
+controls are disabled while the imported vehicle is displayed.
+
 ## OneDrive sharing package
-**Simplest option: share just [EX60-3D-Viewer.html](exports/EX60-3D-Viewer.html)** (~1.2 MB).
+**Simplest option: share just [EX60-3D-Viewer.html](exports/EX60-3D-Viewer.html)** (~1.5 MB).
 It embeds the viewer, styles, Three.js and its license, nine body profiles, geometry spec and
 synthetic demo timeline. Double-click it or use **Open with** a modern WebGL-enabled browser
 from a local, network-shared or OneDrive-synced folder. No Python, server, VS Code, installation
@@ -216,10 +236,94 @@ Mirror yaw = pitch = 0 means the glass normal faces +X (rearward).
 
 Channels missing from the logs fall back to design values and are listed in `missing_channels`.
 
+### Manual NUC MDF download and automatic replay conversion
+
+1. Start the local viewer with `python -m ergo3d serve --open` from the project root.
+   The optional `asammdf` dependency in `requirements.txt` must be installed in that Python environment.
+2. Click **NucLogger export**. It opens <https://log-analyzer.nuc.volvocars.net/> in a new tab
+   and starts a local download session. If the popup is blocked, use **Open Log Analyzer in a new tab**.
+   After signing in, **Try embedded view** optionally loads the Analyzer inside the dialog.
+   Frame policies, SSO or third-party cookie restrictions may prevent embedding; use the new tab
+   instead. The viewer neither bypasses those policies nor reads the external iframe.
+3. Sign in normally, select the authorized VIN/time/signals on the website, and save
+   completed `.mf4` files directly into **`data\logs\` relative to the project root**.
+   Use Save as or move files from Downloads; the viewer cannot set browser download preferences.
+   In Log Analyzer: open a VIN/time window or upload your own raw captures, verify
+   the SDB/Interfaces, plot the ergonomic signals, then **Export data...**.
+   Select plotted signals and a continuous time range, choose **MDF4 (.mf4)**,
+   click **Export**, and download the result. Select actual physical positions/angles,
+   not state names or command signals.
+4. Verify actual channel aliases and scale/offset in [config/signal_mapping.json](config/signal_mapping.json),
+   then tick the mapping-confirmation box. The supplied names/calibration are placeholders.
+   MDF samples are already decoded physical values: normally use scale 1 and offset 0 unless
+   a verified model-coordinate conversion is needed. Do not apply DBC scaling twice.
+   Use the actual channel names in the exported MDF. Analyzer numeric signals keep
+   their signal names; some value-table signals also have a numeric `__physical`
+   channel. An ambiguous same-named channel needs a narrower export or explicit
+   channel selection before import; do not silently select a different bus.
+5. Return to the viewer and close the **local NucLogger export dialog** (Close or Escape).
+   New/changed top-level `.mf4`/`.mdf` files from this session are converted automatically.
+   Closing the external website tab alone cannot reliably trigger local conversion.
+
+Replay JSONs stay private under `data\logs\ergo-replay\<session>\`. The first
+converted recording opens automatically; use the recording selector for others.
+An error is displayed for unfinished downloads, missing mappings, corrupt files
+or unavailable dependencies; **Retry MF4 conversion** retries without resaving
+successful files. Existing unchanged files and subfolders are not imported.
+
+Files are never merged or aligned implicitly. Each replay uses the common time
+coverage of its mapped channels at 10 Hz; repeated/reset timestamps, non-finite
+samples and empty overlaps are rejected. [Log Analyzer](https://nuc.volvocars.net/tools/log-analyzer.html)
+exports every decoded sample in the selected range, not its plot-reduced points.
+Ergo uses linear interpolation at 10 Hz for physical position/angle playback.
+The importer records the largest sample spacing per channel; this is not proof
+of capture coverage. Export a known continuous test interval,
+not unrelated measurement files. At most 64 changed files and one million output
+frames per conversion batch are accepted.
+Missing channels use design defaults (not measured coverage). Conversion does
+not verify VIN, decoder revision, calibration or cross-device clock alignment.
+Keep real logs and replay JSONs out of HTML/ZIP exports and commits.
+
+This workflow requires the loopback `ergo3d serve` API. Offline HTML, static servers
+and Teams/SharePoint pages can open the Analyzer website but cannot convert local files.
+No website credentials are transferred to the local viewer, and no Azure acquisition is used.
+
+The Analyzer's raw captures, indexes and temporary exports live on its server,
+not in a discoverable local PC folder. Opening or embedding it does not transfer
+those files. Ergo cannot read its browser memory, cookies, server cache or download
+history. Use the explicit MF4 download above; local raw PCAP/PCAPNG/BLF/ASC files
+must be uploaded and decoded in the Analyzer first. MF4s from the separate MDF
+Export website remain supported too, but that website is no longer the default.
+
+### NUC Drive / share-drive export by VIN and time period
+
+The intended flow is bounded
+local download -> verified CAN/Ethernet time alignment -> independent signal series
+-> calibrated ergonomic timeline. Final signal selection can be tuned later.
+
+The local Python server now uses a **share-drive copy connector**, with no Azure
+Blob SDK or Azure CLI dependency. See [share setup and recording index](docs/share-drive-connector.md).
+It reads a UNC/mapped drive using the server process's Windows permissions, or a
+local folder of files downloaded manually through NUC Drive. The internal website
+remains inaccessible here; no NUC web-download API or actual share root is verified.
+Clock alignment and decoding are not implemented by the copy connector.
+
+In the viewer's **NucLogger export** dialog, expand **Optional indexed share-drive copy**
+for a VIN and UTC start/end times. With `serve --nuc-config data\logs\share-drive.json`,
+**Review request** selects indexed chunks and checks source files, then
+**Download approved files** copies only that preview to a private local session.
+An **Open NUC Drive** link opens the site for normal browser sign-in/manual download;
+it does not automate the website or transfer browser credentials.
+Without that configuration, review is local only and downloading remains disabled.
+Form details are not saved to browser storage; approved downloads persist VIN/time
+and source provenance in the local manifest.
+Close the dialog with **Close** or **Escape**. It is also included in the offline
+HTML and desktop/Teams export packages.
+
 ## AI agents (VS Code Copilot Chat → agent picker)
 Select **Master Agent** for all project requests. It is the only user-facing project agent:
 it handles questions and approvals, invokes specialists internally when needed, and returns
-one consolidated response. The five specialists are hidden from the agent picker but remain
+one consolidated response. The seven specialists are hidden from the agent picker but remain
 available as subagents. Built-in VS Code agents are unaffected.
 
 | Agent | Job | Models (first available is used) |
@@ -227,11 +331,14 @@ available as subagents. Built-in VS Code agents are unaffected.
 | **Master Agent** | Single interaction point; coordinates the internal specialists below | Claude Opus 4.5 → Claude Sonnet 4.5 → GPT-5 |
 | **EX60 Researcher** | Finds Volvo, press and standards data and writes it into the spec with confidence and source | Gemini 2.5 Pro → GPT-5 → Claude Sonnet 4.5 |
 | **Ergo 3D Modeler** | Geometry, kinematics and viewer; keeps the Python and JS versions in sync | Claude Sonnet 4.5 → GPT-5-Codex → GPT-5 |
+| **NUC Authentication** | API/SSO and Windows share identity diagnosis; separates service permissions and keeps private auth research out of shared artifacts | Session default |
+| **NUC Log Export** | Share-drive-first acquisition using Windows permissions or manual NUC Drive download handoff; VIN/time index validation, clock evidence and separate native-rate series | Session default |
 | **Test Log Sync** | Maps real CAN/ECU signals and builds timelines and reports | GPT-5 → Claude Sonnet 4.5 → GPT-5 mini |
 | **Ergo Reviewer** | Read-only check against SAE J4004/J941/J1050/J1100 and UN ECE R46 | Claude Opus 4.5 → o3 → GPT-5 |
 | **Teams Web Exporter** | PC/mobile responsive exports, Teams sharing diagnostics, package validation and access-controlled deployment handoff | Session default |
 
-Prompts: `/import-test-log`, `/update-ex60-spec`, `/ergo-review`, `/export-teams-viewer` all run through Master Agent.
+Prompts: `/import-test-log`, `/export-vin-replay`, `/update-ex60-spec`, `/ergo-review`,
+`/export-teams-viewer` all run through Master Agent.
 If the picker still shows the previous coordinator or specialists, run **Developer: Reload Window**.
 Change the `model:` lists in
 `.github/agents/*.agent.md` to match the models enabled in your Copilot plan.

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>NucLogger export dialog test</title></head>
+<body>
+<pre id="result">RUNNING</pre>
+<iframe id="viewer" style="width:1200px;height:900px"></iframe>
+<script type="module">
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const frame = document.getElementById('viewer');
+const query = new URLSearchParams(location.search);
+const waitFor = async (check) => {
+  for (let i = 0; i < 100 && !check(); i++) await new Promise((resolve) => setTimeout(resolve, 100));
+  assert(check(), 'Timed out waiting for connector response');
+};
+try {
+  const targets = {
+    source: '../viewer/index.html',
+    standalone: '../exports/EX60-3D-Viewer.html',
+    desktop: '../exports/EX60-3D-Viewer/viewer/index.html',
+    teams: '../exports/EX60-Teams-Web/index.html',
+  };
+  const target = query.get('target') || 'source';
+  assert(Object.hasOwn(targets, target), 'Unknown target');
+  if (query.has('mobile')) frame.style.width = '390px';
+  await new Promise((resolve) => { frame.onload = resolve; frame.src = targets[target]; });
+  for (let i = 0; i < 150 && !frame.contentWindow.ergo; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert(frame.contentWindow.ergo, 'Viewer did not initialize');
+  const win = frame.contentWindow, doc = frame.contentDocument;
+  win.open = () => null;
+  const get = (id) => doc.getElementById(id);
+  if (query.has('mobile')) get('toggleControls').click();
+  const button = get('openNucExport'), dialog = get('nucExportDialog');
+  assert(!dialog.open, 'Dialog should start closed');
+  button.click();
+  assert(dialog.open && dialog.matches(':modal'), 'Button did not open a modal dialog');
+  assert(doc.activeElement === get('mdfMappingVerified'), 'Mapping confirmation should receive focus');
+  assert(dialog.getAttribute('aria-labelledby') === 'nucExportTitle', 'Missing accessible title');
+  get('nucExportForm').closest('details').open = true;
+  if (query.has('connected')) {
+    await waitFor(() => get('nucExportNotice').textContent.includes('Share drive configured'));
+  } else assert(get('nucExportNotice').textContent.includes('not connected'), 'Missing connector notice');
+  assert(dialog.querySelector('button[disabled]').textContent.includes('Download'), 'Download must be disabled');
+  const form = get('nucExportForm'), status = get('nucExportStatus');
+  const submit = form.querySelector('button[type="submit"]');
+  const set = (id, value) => {
+    get(id).value = value;
+    get(id).dispatchEvent(new win.Event('input', { bubbles: true }));
+  };
+  form.requestSubmit(submit);
+  assert(!status.textContent && !get('nucVin').validity.valid, 'Empty form was accepted');
+  set('nucVin', 'IIIIIIIIIIIIIIIII');
+  assert(!get('nucVin').validity.valid, 'Invalid VIN letters accepted');
+  set('nucVin', 'abc12345678901234');
+  set('nucStart', '2026-10-30T10:00:00');
+  set('nucEnd', '2026-10-30T10:00:00');
+  form.requestSubmit(submit);
+  assert(get('nucEnd').validity.customError && !status.textContent, 'Equal bounds accepted');
+  set('nucEnd', '2026-10-30T09:00:00');
+  form.requestSubmit(submit);
+  assert(get('nucEnd').validity.customError, 'Reversed bounds accepted');
+  set('nucEnd', '2026-10-30T10:01:30');
+  form.requestSubmit(submit);
+  assert(form.checkValidity(), 'Valid request rejected');
+  assert(get('nucVin').value === 'ABC12345678901234', 'VIN not normalized');
+  if (query.has('connected')) {
+    await waitFor(() => !get('nucDownload').disabled);
+    assert(get('nucInventory').textContent.includes('record.asc'), 'Missing preview inventory');
+    assert(status.textContent.includes('Preview ready'), 'Missing preview state');
+    get('nucDownload').click();
+    assert(form.getAttribute('aria-busy') === 'true', 'Missing download busy state');
+    await waitFor(() => form.getAttribute('aria-busy') === 'false');
+    assert(status.textContent.includes('Logs downloaded locally') &&
+      status.textContent.includes('have not been performed'), `Unexpected download result: ${status.textContent}`);
+    assert(get('nucDownload').disabled, 'Used plan must not be reusable');
+  } else {
+    assert(status.textContent.includes('2026-10-30T10:00:00.000Z') &&
+      status.textContent.includes('2026-10-30T10:01:30.000Z'), 'Times were not interpreted as UTC');
+    assert(status.textContent.includes('Not submitted') && status.textContent.includes('No logs downloaded'),
+      'Review must not claim export success');
+  }
+  set('nucStart', '2026-10-30T10:00:01');
+  assert(!status.textContent, 'Stale review retained after input changed');
+  const rect = dialog.getBoundingClientRect();
+  assert(rect.left >= 0 && rect.right <= win.innerWidth && rect.top >= 0 &&
+    rect.bottom <= win.innerHeight && dialog.scrollWidth <= dialog.clientWidth,
+    'Dialog overflows viewport');
+  get('closeNucExport').click();
+  for (let i = 0; i < 20 && doc.activeElement !== button; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert(!dialog.open && doc.activeElement === button,
+    `Close did not return focus to opener: ${doc.activeElement?.id}`);
+  button.click();
+  assert(dialog.open && get('nucVin').value === 'ABC12345678901234', 'Reopen failed or lost tab state');
+  if (typeof dialog.requestClose === 'function') {
+    let cancelled = false;
+    dialog.addEventListener('cancel', () => { cancelled = true; }, { once: true });
+    win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    if (query.has('mobile')) assert(get('panel').classList.contains('open'), 'Escape closed controls behind dialog');
+    dialog.requestClose();
+    assert(cancelled && !dialog.open, 'Native cancel/close request failed');
+  } else dialog.close();
+  assert(!frame.contentWindow.ergo.timeline, 'Dialog changed replay timeline');
+  document.getElementById('result').textContent = JSON.stringify({ status: 'PASS', target, mobile: query.has('mobile') });
+} catch (error) {
+  document.getElementById('result').textContent = `FAIL: ${error.stack}`;
+}
+</script>
+</body>
+</html>

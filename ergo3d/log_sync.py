@@ -69,16 +69,20 @@ def read_mdf(path: str, wanted: Iterable[str]) -> Dict[str, Series]:
     """Read selected channels from an ASAM MDF (.mf4/.mdf/.dat) file (needs `asammdf`)."""
     try:
         from asammdf import MDF  # type: ignore
+        from asammdf.blocks.utils import MdfException
     except ImportError as e:  # pragma: no cover - optional dependency
         raise SystemExit("Reading MDF logs requires: pip install asammdf") from e
     out: Dict[str, Series] = {}
-    with MDF(path) as mdf:
-        available = {name.lower(): name for name in mdf.channels_db}
-        for w in wanted:
-            real = available.get(w.lower())
-            if real:
-                sig = mdf.get(real)
-                out[w] = ([float(t) for t in sig.timestamps], [float(v) for v in sig.samples])
+    try:
+        with MDF(path) as mdf:
+            available = {name.lower(): name for name in mdf.channels_db}
+            for w in wanted:
+                real = available.get(w.lower())
+                if real:
+                    sig = mdf.get(real)
+                    out[w] = ([float(t) for t in sig.timestamps], [float(v) for v in sig.samples])
+    except MdfException as exc:
+        raise ValueError(f"MDF decoding failed: {exc}") from exc
     return out
 
 

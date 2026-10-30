@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import webbrowser
+from pathlib import Path
 
 from . import report as rep
 from .geometry import Adjustments, ergo_flags, ergo_metrics
@@ -80,7 +81,23 @@ def cmd_sample(a) -> int:
 
 
 def cmd_serve(a) -> int:
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=ROOT)
+    from .mdf_import import MdfImporter
+    from .nuc_export import ShareConnector, ConnectorError, read_config
+    from .nuc_server import ViewerHandler
+
+    connector = None
+    if a.nuc_config:
+        try:
+            config_path = Path(a.nuc_config).resolve()
+            local = (Path(ROOT) / "data" / "logs").resolve()
+            if local not in config_path.parents:
+                raise ConnectorError("Keep the private connector config under data\\logs\\.")
+            connector = ShareConnector(read_config(str(config_path)), local / "nuc-sessions")
+        except (OSError, ValueError) as exc:
+            print(f"NUC connector configuration failed: {exc}", file=sys.stderr)
+            return 2
+    handler = functools.partial(ViewerHandler, directory=ROOT, connector=connector,
+                                importer=MdfImporter(ROOT, a.spec))
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), handler)
     url = f"http://127.0.0.1:{a.port}/viewer/index.html"
     print(f"Serving {ROOT} -> {url}  (Ctrl+C to stop)")
@@ -90,6 +107,10 @@ def cmd_serve(a) -> int:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        srv.server_close()
+        if connector:
+            connector.close()
     return 0
 
 
@@ -126,6 +147,7 @@ def main(argv=None) -> int:
     v = sub.add_parser("serve", help="serve the 3D viewer on localhost")
     v.add_argument("--port", type=int, default=8060)
     v.add_argument("--open", action="store_true", help="open the browser")
+    v.add_argument("--nuc-config", help="private share-drive JSON configuration under data\\logs\\")
     v.set_defaults(fn=cmd_serve)
 
     a = p.parse_args(argv)

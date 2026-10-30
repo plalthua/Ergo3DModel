@@ -12,6 +12,12 @@
     },
     "sources": [
       {
+        "id": "supplied_local_glb",
+        "title": "User-supplied local GLB; identity, hardpoints and articulation not independently validated",
+        "url": null,
+        "retrieved": "2026-10-30"
+      },
+      {
         "id": "illustrative_openings",
         "title": "Project engineering assumptions for illustrative door and tailgate articulation; not Volvo measurements",
         "url": null,
@@ -85,6 +91,7 @@
       }
     ],
     "data_gaps": [
+      "Local supplied GLB replaces the visible vehicle only. Metre units, Y-up, +X rearward and front axle X=-1.5824000835 m are inferred from loaded geometry and named wheel nodes; ground offset is inferred from its minimum Y. Alignment is an estimate, not CAD calibration. No animation clips or verified seat/steering/mirror kinematic bindings are provided. Existing numeric ergonomics and manikin hardpoints remain the parametric estimates and do not measure GLB surfaces.",
       "Door and tailgate hinges, opening angles, skin thickness, glazing seals, cargo lining and aperture boundaries are illustrative engineering estimates, not measured Volvo data. Local gallery 03/05 guides a single framed side window and a central liftgate with fixed rear corners, not exact dimensions. Cargo floor height and wheelhouse covers are unmeasured assumptions. Opening controls are visual only, independent of ECU log channels; ergonomic and mirror calculations remain for the closed vehicle.",
       "2026-10-28 two-image remodel: uncalibrated photo reconstruction only. DIM location/tilt and above-rim routing are intentional estimates, not measured visibility. Windscreen curvature, fascia sweep, upholstery microstructure and static passenger/rear seating layout cannot be calibrated from these perspectives. Driver H-point, seat dimensions/ranges, column and mirror hardpoints are unchanged. Static passenger/rear parts have no logged channels or ergonomic certification.",
       "All driver body profiles, including percentile-labelled adults and teenage examples, are illustrative estimates. Obtain validated anthropometry or individual measurements; no preset represents every person of an age, sex or body type.",
@@ -97,6 +104,15 @@
       "Exterior panel cross-sections, glazing shape, wheel arches, wheel styling and cabin trim dimensions are visual estimates from press and local reference images; obtain EX60 CAD or measurement data before dimensional interpretation.",
       "Retry Volvo spec sheet / owner's manual (support.volvocars.com) and first-drive reviews (Autocar, What Car?) manually, or replace with CAD/measured data from the test vehicle."
     ]
+  },
+  "imported_vehicle": {
+    "value": {
+      "local_url": "../CarImage/VCC200_V436_PAC3D_251230_V0_11.glb",
+      "units_to_mm": 1000,
+      "translation_mm": [1582.4000835418701, 0, 27.595700683199387]
+    },
+    "confidence": "estimate",
+    "source": "supplied_local_glb"
   },
   "vehicle": {
     "length": {

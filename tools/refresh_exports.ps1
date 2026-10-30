@@ -15,14 +15,27 @@ if ($LASTEXITCODE) { throw 'build_shareable_html.py failed' }
 
 Copy-Item $single (Join-Path $desktop 'EX60-3D-Viewer.html') -Force
 Copy-Item $single (Join-Path $teams 'index.html') -Force
-foreach ($name in 'index.html', 'style.css', 'app.js', 'kinematics.js', 'model.js') {
+foreach ($name in 'index.html', 'style.css', 'app.js', 'kinematics.js', 'model.js', 'imported-car.js') {
     Copy-Item (Join-Path $root "viewer\$name") (Join-Path $desktop "viewer\$name") -Force
+}
+$desktopIndex = Join-Path $desktop 'viewer\index.html'
+$indexText = [IO.File]::ReadAllText($desktopIndex).Replace(
+    '<meta name="vehicle-default" content="local-glb" />',
+    '<meta name="vehicle-default" content="parametric" />')
+[IO.File]::WriteAllText($desktopIndex, $indexText, (New-Object Text.UTF8Encoding $false))
+foreach ($name in 'loaders\GLTFLoader.js', 'utils\BufferGeometryUtils.js') {
+    $target = Join-Path $desktop "viewer\vendor\addons\$name"
+    [void](New-Item (Split-Path $target -Parent) -ItemType Directory -Force)
+    Copy-Item (Join-Path $root "viewer\vendor\addons\$name") $target -Force
 }
 Copy-Item (Join-Path $root 'data\ex60_spec.json') (Join-Path $desktop 'data\ex60_spec.json') -Force
 foreach ($file in Get-ChildItem (Join-Path $root 'ergo3d') -Filter '*.py' -File) {
     Copy-Item $file.FullName (Join-Path $desktop "ergo3d\$($file.Name)") -Force
 }
 Copy-Item (Join-Path $root 'README.md') (Join-Path $desktop 'README.md') -Force
+$desktopDocs = Join-Path $desktop 'docs'
+[void](New-Item $desktopDocs -ItemType Directory -Force)
+Copy-Item (Join-Path $root 'docs\share-drive-connector.md') (Join-Path $desktopDocs 'share-drive-connector.md') -Force
 foreach ($folder in 'viewer', 'ergo3d', 'data', 'config') {
     $files = if ($folder -eq 'data') {
         Get-Item (Join-Path $root 'data\ex60_spec.json')
@@ -34,6 +47,13 @@ foreach ($folder in 'viewer', 'ergo3d', 'data', 'config') {
     foreach ($file in $files) {
         $target = Join-Path $desktop "$folder\$($file.Name)"
         if ($folder -eq 'config') { Copy-Item $file.FullName $target -Force }
+        if ($folder -eq 'viewer' -and $file.Name -eq 'index.html') {
+            $expected = [IO.File]::ReadAllText($file.FullName).Replace(
+                '<meta name="vehicle-default" content="local-glb" />',
+                '<meta name="vehicle-default" content="parametric" />')
+            if ([IO.File]::ReadAllText($target) -ne $expected) { throw 'Desktop HTML divergence' }
+            continue
+        }
         if ((Get-FileHash $file.FullName).Hash -ne (Get-FileHash $target).Hash) {
             throw "Desktop/source divergence: $folder\$($file.Name)"
         }

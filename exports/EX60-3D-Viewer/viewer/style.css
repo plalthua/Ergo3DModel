@@ -38,6 +38,26 @@ footer { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 8px; 
 code { color: #9cdcfe; }
 summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
 button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+input:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+#nucExportDialog { width: min(620px, calc(100% - 24px)); max-height: calc(100% - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; margin: auto; padding: 20px; background: var(--panel); color: var(--fg); border: 1px solid var(--acc); border-radius: 8px; }
+#nucExportDialog::backdrop { background: rgba(0,0,0,.7); }
+.dialog-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+#nucExportDialog .notice { padding: 10px; border-left: 3px solid var(--acc); background: #203040; }
+#nucExportForm label { display: block; margin: 10px 0 4px; }
+#nucExportForm input { width: 100%; min-width: 0; min-height: 40px; padding: 8px; border: 1px solid #3a424c; border-radius: 4px; background: var(--bg); color: var(--fg); font: inherit; color-scheme: dark; }
+#nucVin { text-transform: uppercase; }
+.dialog-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.nuc-workflow { padding-left: 20px; }
+#nucExportStatus { overflow-wrap: anywhere; }
+#nucInventory { overflow-wrap: anywhere; max-height: 180px; overflow-y: auto; }
+#nucExportDialog a { color: var(--acc); }
+@media (max-width: 600px) {
+  .dialog-dates { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  #nucExportDialog { padding: 14px; }
+  #nucExportForm input { font-size: 16px; }
+}
+#nucExportDialog.with-analyzer { width: min(1200px, calc(100vw - 32px)); }
+#logAnalyzerFrame { display: block; width: 100%; height: 65vh; min-height: 260px; border: 1px solid var(--line); background: white; }
 #bodyInfo { margin: 6px 0; }
 #bodyCustomization { margin-top: 6px; }
 #driverMenu { position: absolute; top: 10px; left: 10px; width: 260px; max-width: calc(100% - 20px); background: rgba(20,23,27,.94); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; }

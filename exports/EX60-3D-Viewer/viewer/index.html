@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <title>EX60 Ergo Coordinator – 3D</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="vehicle-default" content="parametric" />
   <link rel="stylesheet" href="style.css" />
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
@@ -39,10 +40,19 @@
     <section>
       <h2>Test-log replay</h2>
       <div class="row">
+        <button type="button" id="openNucExport" aria-haspopup="dialog" aria-controls="nucExportDialog">NucLogger export</button>
+      </div>
+      <div class="row">
         <button id="loadSample">Load sample</button>
         <label class="file">Open timeline…<input type="file" id="timelineFile" accept=".json" /></label>
       </div>
       <div id="tlInfo" class="muted">No timeline loaded – sliders are manual.</div>
+      <p id="mdfImportStatus" class="muted" role="status" aria-live="polite"></p>
+      <div id="mdfReplayControls" hidden>
+        <label for="mdfReplayFiles">Converted recordings (kept separate)</label>
+        <select id="mdfReplayFiles"></select>
+      </div>
+      <button type="button" id="mdfRetry" hidden>Retry MF4 conversion</button>
       <div class="row">
         <button id="play" disabled>▶ Play</button>
         <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>5</option></select>
@@ -70,6 +80,14 @@
 
     <section>
       <h2>View</h2>
+      <label for="vehicleVisual">Car model</label>
+      <select id="vehicleVisual">
+        <option value="glb">Supplied GLB (static geometry)</option>
+        <option value="parametric">Parametric estimates (replay articulation)</option>
+      </select>
+      <p id="vehicleVisualStatus" class="muted" role="status" aria-live="polite"></p>
+      <label class="file">Open local GLB...<input type="file" id="vehicleGlbFile" accept=".glb" /></label>
+      <p class="muted">GLB alignment is estimated. Seat, steering, mirrors and opening panels are static in GLB mode. Metrics and optional occupant overlays still use the parametric spec, not GLB measurements.</p>
       <div class="row wrap" id="cams">
         <button data-cam="iso">Iso</button><button data-cam="side">Side</button><button data-cam="top">Top</button>
         <button data-cam="front">Front</button><button data-cam="eye">Driver eye</button>
@@ -103,6 +121,66 @@
     <div id="metrics" role="region" aria-label="Ergo metrics"></div>
     <div id="hint"><span class="desk">Drag: orbit · Right-drag: pan · Wheel: zoom · Drop a timeline .json here</span><span class="touch">One finger: orbit · Two fingers: pinch zoom / pan</span></div>
   </main>
+
+  <dialog id="nucExportDialog" aria-labelledby="nucExportTitle" aria-describedby="mdfSessionStatus">
+    <div class="dialog-heading">
+      <h1 id="nucExportTitle">NucLogger export</h1>
+      <button type="button" id="closeNucExport" aria-label="Close NucLogger export">Close</button>
+    </div>
+    <h2>Log Analyzer to Ergo replay</h2>
+    <div class="row wrap">
+      <a id="openMdfWebsite" href="https://log-analyzer.nuc.volvocars.net/" target="_blank" rel="noopener noreferrer">Open Log Analyzer in a new tab</a>
+      <button type="button" id="embedLogAnalyzer" aria-expanded="false" aria-controls="logAnalyzerEmbed">Try embedded view</button>
+    </div>
+    <p class="muted">Sign in normally in a new tab first. The embedded view is optional: SSO, third-party cookie settings or the website's frame policy may block it. If it is blank or refuses to connect, use the new-tab link. This viewer cannot bypass those restrictions or read the embedded page.</p>
+    <div id="logAnalyzerEmbed" hidden>
+      <iframe id="logAnalyzerFrame" title="NUC Log Signal Analyzer (external website)" referrerpolicy="no-referrer"></iframe>
+    </div>
+    <ol class="nuc-workflow">
+      <li>In Log Analyzer, open the VIN and time window from NUC storage, or upload your existing local raw capture files.</li>
+      <li>Check the SDB and Interfaces, then plot the required seat, steering and mirror signals.</li>
+      <li>Choose <strong>Export data...</strong>, select plotted signals and a continuous time range, choose <strong>MDF4 (.mf4)</strong>, then <strong>Export</strong>. Download the generated file.</li>
+    </ol>
+    <p class="muted">Opening a log in the Analyzer does not download its raw captures to this PC. Raw captures, indexes and export jobs stay on its server. Ergo uses only the MF4 you explicitly download; it cannot extract the Analyzer's server cache or browser memory. A local PCAP/BLF must first be uploaded and decoded in the Analyzer.</p>
+    <p class="muted">Save completed <code>.mf4</code> files into <code>data\logs\</code> relative to this project. Use your browser's Save as dialog or move the download there. This page cannot set the browser download folder or detect closure of the external website.</p>
+    <p class="muted">When finished, close this dialog to convert new or changed files and load the first replay. Independent files stay separate. Conversion requires the local <code>ergo3d serve</code> server, not an offline HTML or Teams preview.</p>
+    <p class="muted">Log Analyzer exports decoded samples, not plot-reduced points. Ergo resamples them at 10 Hz with linear interpolation; this does not prove that the recording is gap-free or its clocks are synchronized. Export physical position/angle channels from a known continuous test interval, not discrete commands or status text.</p>
+    <label class="chk"><input type="checkbox" id="mdfMappingVerified" autofocus /> I verified the real channel names, units and scale/offset in config/signal_mapping.json. The supplied mapping is a sample, not vehicle calibration.</label>
+    <p id="mdfSessionStatus" class="muted" role="status" aria-live="polite"></p>
+    <details>
+    <summary>Optional indexed share-drive copy</summary>
+    <p id="nucExportNotice" class="notice">Share drive is not connected in this page yet. A configured local Python server uses your Windows permissions to copy from a mounted drive or local download folder.</p>
+    <p class="muted"><a href="https://nuc.volvocars.net/tools/drive.html" target="_blank" rel="noopener noreferrer">Open NUC Drive</a> in your browser and sign in normally. If it only offers web downloads, save the authorized logs locally first. This connector does not automate the NUC Drive website or reuse browser credentials.</p>
+    <form id="nucExportForm">
+      <label for="nucVin">Vehicle VIN</label>
+      <input id="nucVin" name="vin" type="text" required minlength="17" maxlength="17" pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-describedby="nucVinHelp" />
+      <p id="nucVinHelp" class="muted">17 letters and digits, excluding I, O and Q.</p>
+      <div class="dialog-dates">
+        <div>
+          <label for="nucStart">Start time (UTC)</label>
+          <input id="nucStart" name="start" type="datetime-local" step="1" required />
+        </div>
+        <div>
+          <label for="nucEnd">End time (UTC, exclusive)</label>
+          <input id="nucEnd" name="end" type="datetime-local" step="1" required />
+        </div>
+      </div>
+      <p class="muted">Enter UTC, not your local timezone. Signal selection will be configured later. Review lists recording chunks before any download. Approved downloads and their VIN/time manifest stay on this PC. Do not enter credentials.</p>
+      <ol class="nuc-workflow">
+        <li>Download the selected recording segments locally.</li>
+        <li>Verify Ethernet / CAN clock alignment.</li>
+        <li>Extract separate native-rate ergonomic signal series.</li>
+        <li>Build and open a verified replay timeline.</li>
+      </ol>
+      <div class="row wrap">
+        <button type="submit" id="nucReview">Review request</button>
+        <button type="button" id="nucDownload" disabled>Download approved files</button>
+      </div>
+      <div id="nucInventory" class="muted"></div>
+      <p id="nucExportStatus" role="status" aria-live="polite"></p>
+    </form>
+    </details>
+  </dialog>
 
   <script type="module" src="app.js"></script>
 </body>

@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import * as K from './kinematics.js';
 import { Ex60Scene, studioEnvironment } from './model.js';
+import { ImportedCar } from './imported-car.js';
 
 const SPEC_URL = '../data/ex60_spec.json';
 const SAMPLE_URL = '../data/timelines/sample_timeline.json';
@@ -33,8 +34,13 @@ scene.add(grid);
 
 const car = new Ex60Scene(spec);
 scene.add(car.root);
+const importedCar = new ImportedCar(car, spec.imported_vehicle.value);
+let glbMode = false, glbLoading = false;
 car.setInspectionTransparency($('inspectionTransparency').checked);
-$('inspectionTransparency').onchange = () => car.setInspectionTransparency($('inspectionTransparency').checked);
+$('inspectionTransparency').onchange = () => {
+  if (glbMode) importedCar.inspect($('inspectionTransparency').checked);
+  else car.setInspectionTransparency($('inspectionTransparency').checked);
+};
 
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
 const controls = new OrbitControls(camera, canvas);
@@ -249,22 +255,104 @@ const layerLabels = {
   r46_zones: 'R46 ground zones',
 };
 let sightlinesToggle;
+const layerInputs = new Map();
 for (const name of Object.keys(car.layers)) {
   const l = document.createElement('label');
   l.className = 'chk';
   l.innerHTML = `<input type="checkbox" ${name === 'eyellipse' ? '' : 'checked'}> ${layerLabels[name] || name}`;
   const cb = l.querySelector('input');
+  layerInputs.set(name, cb);
   car.layers[name].visible = cb.checked;
   if (name === 'sightlines') sightlinesToggle = cb;
   cb.onchange = () => { car.layers[name].visible = cb.checked && (name !== 'sightlines' || !car.hasOpenPanels); };
   $('toggles').appendChild(l);
 }
+const estimatedCarLayers = Object.keys(car.layers).filter((name) =>
+  !['imported_vehicle', 'manikin', 'markers', 'eyellipse', 'sightlines', 'r46_zones'].includes(name));
+const overlayLayers = ['manikin', 'markers', 'eyellipse', 'sightlines', 'r46_zones'];
+const defaultLocalGlb = !document.getElementById('embedded-spec') &&
+  document.querySelector('meta[name="vehicle-default"]')?.content === 'local-glb' &&
+  new URLSearchParams(location.search).get('model') !== 'parametric';
+function selectVisual(mode) {
+  glbMode = mode === 'glb';
+  $('vehicleVisual').value = mode;
+  for (const name of estimatedCarLayers) {
+    car.layers[name].visible = !glbMode && layerInputs.get(name).checked;
+    layerInputs.get(name).disabled = glbMode;
+  }
+  car.layers.imported_vehicle.visible = glbMode && !!importedCar.model;
+  layerInputs.get('imported_vehicle').checked = car.layers.imported_vehicle.visible;
+  layerInputs.get('imported_vehicle').disabled = !glbMode || !importedCar.model;
+  for (const name of overlayLayers) {
+    layerInputs.get(name).checked = false;
+    car.layers[name].visible = false;
+  }
+  for (const [id, button] of openingButtons) {
+    car.setOpening(id, false);
+    button.disabled = glbMode;
+  }
+  $('openAllDoors').disabled = $('closeAllDoors').disabled = glbMode;
+  $('mirrorPip').checked = false;
+  $('mirrorPip').disabled = glbMode;
+  $('exportGlb').disabled = glbMode;
+  $('exportGlb').title = glbMode ? 'Supplied GLB is local-only; redistribution is not enabled.' : '';
+  $('pipLabels').replaceChildren();
+  $('openingStatus').textContent = glbMode
+    ? 'GLB panels are static: hinge binding has not been validated.'
+    : 'All doors and tailgate closed.';
+  importedCar.inspect(glbMode && $('inspectionTransparency').checked);
+  if (!glbMode) car.setInspectionTransparency($('inspectionTransparency').checked);
+  refresh();
+}
+async function loadCarGlb(url, name) {
+  if (glbLoading) return;
+  glbLoading = true;
+  $('vehicleVisual').disabled = $('vehicleGlbFile').disabled = true;
+  selectVisual('glb');
+  $('vehicleVisualStatus').textContent = `Loading ${name}...`;
+  try {
+    await importedCar.load(url, (event) => {
+      $('vehicleVisualStatus').textContent = `Loading ${name}: ${(event.loaded / 1048576).toFixed(1)} MB`;
+    });
+    selectVisual('glb');
+    $('vehicleVisualStatus').textContent =
+      `${name}: supplied geometry loaded. Static vehicle; alignment and numeric ergonomics are uncalibrated estimates.`;
+  } catch (error) {
+    $('vehicleVisualStatus').textContent =
+      `GLB load failed: ${error.message}. Choose Open local GLB or explicitly select the parametric model.`;
+    console.error('GLB vehicle load failed', error);
+  } finally {
+    glbLoading = false;
+    $('vehicleVisual').disabled = $('vehicleGlbFile').disabled = false;
+  }
+}
+$('vehicleVisual').onchange = () => {
+  if ($('vehicleVisual').value === 'glb' && !importedCar.model) {
+    $('vehicleVisualStatus').textContent = 'Select your local GLB file. No private asset is included in portable packages.';
+    selectVisual('glb');
+  } else {
+    selectVisual($('vehicleVisual').value);
+    $('vehicleVisualStatus').textContent = glbMode
+      ? 'Supplied GLB: static geometry; alignment and metrics are uncalibrated estimates.'
+      : 'Parametric estimate model selected explicitly. Replay articulates this model, not the supplied GLB.';
+  }
+};
+$('vehicleGlbFile').onchange = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  try { await loadCarGlb(url, file.name); } finally { URL.revokeObjectURL(url); }
+  event.target.value = '';
+};
 document.querySelectorAll('#cams button').forEach((b) => (b.onclick = () => setCam(b.dataset.cam)));
 
 // --------------------------------------------------------------- timeline
 function loadTimeline(tl, name) {
   if (tl.format !== 'ergo3d-timeline/1') throw new Error('Not an ergo3d timeline (run: python -m ergo3d sync ...)');
   timeline = tl;
+  playing = false;
+  $('play').textContent = '▶ Play';
+  state = K.designState(spec);
   tlTime = tl.t[0];
   $('scrub').min = tl.t[0];
   $('scrub').max = tl.t[tl.t.length - 1];
@@ -320,6 +408,208 @@ $('play').onclick = () => {
 $('scrub').oninput = (e) => { tlTime = parseFloat(e.target.value); applyTimeline(); };
 $('followLog').onchange = applyTimeline;
 
+// --------------------------------------------------------- NucLogger setup
+const nucDialog = $('nucExportDialog');
+const nucForm = $('nucExportForm');
+const nucStart = $('nucStart'), nucEnd = $('nucEnd');
+const LOG_ANALYZER_URL = 'https://log-analyzer.nuc.volvocars.net/';
+let nucConfigured = false, nucPlan = null, nucBusy = false;
+let mdfSession = null, mdfBusy = false, mdfStarting = null, mdfResults = [];
+const localNucServer = location.protocol === 'http:' &&
+  ['localhost', '127.0.0.1'].includes(location.hostname);
+function nucClearPlan() {
+  nucPlan = null;
+  $('nucDownload').disabled = true;
+  $('nucInventory').replaceChildren();
+}
+function nucSetBusy(busy) {
+  nucBusy = busy;
+  nucForm.setAttribute('aria-busy', String(busy));
+  for (const input of nucForm.querySelectorAll('input, button')) input.disabled = busy;
+  $('nucDownload').disabled = busy || !nucPlan;
+}
+async function nucApi(path, body) {
+  const response = await fetch(`/api/nuc/${path}`, body === undefined
+    ? { cache: 'no-store' }
+    : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!response.headers.get('Content-Type')?.includes('application/json')) {
+    throw new Error('This server has no NUC API. Use python -m ergo3d serve --nuc-config <local-config.json>.');
+  }
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || `Connector returned HTTP ${response.status}.`);
+  return data;
+}
+async function beginMdfSession() {
+  if (mdfSession) return;
+  const data = await nucApi('mdf/begin', {});
+  mdfSession = data.session_id;
+  $('mdfSessionStatus').textContent = `Ready. Save new downloads into ${data.folder}\\, then close this dialog.`;
+}
+async function convertMdfDownloads() {
+  if (!mdfSession || mdfBusy) return;
+  if (!$('mdfMappingVerified').checked) {
+    $('mdfImportStatus').textContent = 'MF4 conversion not started: reopen NucLogger export and confirm the real signal mapping and calibration.';
+    $('mdfRetry').hidden = false;
+    return;
+  }
+  mdfBusy = true;
+  $('mdfRetry').hidden = true;
+  $('openNucExport').disabled = true;
+  $('mdfImportStatus').textContent = 'Converting downloaded MF4 files locally. Keep this viewer open...';
+  try {
+    const data = await nucApi('mdf/convert', { session_id: mdfSession, mapping_verified: true });
+    if (data.results.length) {
+      mdfResults.push(...data.results);
+      $('mdfReplayFiles').replaceChildren(...mdfResults.map((item, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${item.name} - ${item.path}`;
+        return option;
+      }));
+      $('mdfReplayControls').hidden = false;
+      const index = mdfResults.length - data.results.length;
+      $('mdfReplayFiles').value = index;
+      loadTimeline(mdfResults[index].timeline, mdfResults[index].name);
+    }
+    const errors = data.errors.map((item) => `${item.name}: ${item.error}`).join(' | ');
+    $('mdfImportStatus').textContent =
+      `${data.results.length} replay file(s) saved under data\\logs\\ergo-replay\\. ` +
+      'Values are linearly interpolated at 10 Hz; gaps and clock alignment are not independently verified. Missing channels use design defaults.' +
+      (errors ? ` Conversion failed: ${errors}` : '');
+    $('mdfRetry').hidden = !data.errors.length;
+    if (!data.errors.length) mdfSession = null;
+  } catch (error) {
+    $('mdfImportStatus').textContent = `MF4 conversion did not complete: ${error.message}`;
+    if (error.message.includes('session expired')) mdfSession = null;
+    $('mdfRetry').hidden = false;
+  } finally {
+    mdfBusy = false;
+    $('openNucExport').disabled = false;
+  }
+}
+$('mdfRetry').onclick = convertMdfDownloads;
+$('mdfReplayFiles').onchange = (event) => {
+  const item = mdfResults[Number(event.target.value)];
+  if (item) loadTimeline(item.timeline, item.name);
+};
+$('openMdfWebsite').addEventListener('click', (event) => {
+  if (localNucServer && !mdfSession) {
+    event.preventDefault();
+    $('mdfSessionStatus').textContent = 'The local export session is not ready. Reopen NucLogger export before downloading.';
+  }
+});
+$('embedLogAnalyzer').onclick = () => {
+  const show = $('logAnalyzerEmbed').hidden;
+  $('logAnalyzerEmbed').hidden = !show;
+  $('embedLogAnalyzer').setAttribute('aria-expanded', String(show));
+  $('embedLogAnalyzer').textContent = show ? 'Hide embedded view' : 'Try embedded view';
+  nucDialog.classList.toggle('with-analyzer', show);
+  if (show) $('logAnalyzerFrame').src = LOG_ANALYZER_URL;
+  else $('logAnalyzerFrame').removeAttribute('src');
+};
+$('openNucExport').onclick = async () => {
+  nucDialog.showModal();
+  window.open(LOG_ANALYZER_URL, '_blank', 'noopener,noreferrer');
+  $('mdfSessionStatus').textContent = 'Starting local MDF export session...';
+  if (!localNucServer) {
+    $('mdfSessionStatus').textContent = 'Automatic conversion is unavailable here. Start python -m ergo3d serve --open on your PC.';
+    return;
+  }
+  try {
+    mdfStarting = beginMdfSession();
+    await mdfStarting;
+    if (mdfSession) $('mdfSessionStatus').textContent = 'Ready. Save new downloads into data\\logs\\, then close this dialog.';
+  } catch (error) {
+    $('mdfSessionStatus').textContent = `Local MDF export is unavailable: ${error.message}`;
+  }
+  if (!localNucServer || nucBusy) return;
+  try {
+    const data = await nucApi('status');
+    nucConfigured = data.configured === true;
+    $('nucExportNotice').textContent = data.message;
+    if (!nucConfigured) nucClearPlan();
+  } catch (error) {
+    nucConfigured = false;
+    nucClearPlan();
+    $('nucExportNotice').textContent = `Share drive not connected: ${error.message}`;
+  }
+};
+$('closeNucExport').onclick = () => nucDialog.close();
+nucDialog.addEventListener('close', async () => {
+  $('logAnalyzerFrame').removeAttribute('src');
+  $('logAnalyzerEmbed').hidden = true;
+  $('embedLogAnalyzer').setAttribute('aria-expanded', 'false');
+  $('embedLogAnalyzer').textContent = 'Try embedded view';
+  nucDialog.classList.remove('with-analyzer');
+  $('openNucExport').focus();
+  try {
+    await mdfStarting;
+  } catch (error) {
+    $('mdfImportStatus').textContent = `MF4 conversion could not start: ${error.message}`;
+    return;
+  }
+  if (!nucBusy) convertMdfDownloads();
+});
+nucForm.addEventListener('input', () => {
+  nucEnd.setCustomValidity('');
+  nucClearPlan();
+  $('nucExportStatus').textContent = '';
+});
+nucForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (nucBusy) return;
+  const start = Date.parse(`${nucStart.value}Z`), end = Date.parse(`${nucEnd.value}Z`);
+  nucEnd.setCustomValidity(
+    !Number.isFinite(start) || !Number.isFinite(end) || end <= start
+      ? 'End time must be later than start time. Both times are UTC.' : '',
+  );
+  if (!nucForm.reportValidity()) return;
+  $('nucVin').value = $('nucVin').value.toUpperCase();
+  nucClearPlan();
+  const request = {
+    vin: $('nucVin').value, start: new Date(start).toISOString(), end: new Date(end).toISOString(),
+  };
+  if (nucConfigured) {
+    nucSetBusy(true);
+    $('nucExportStatus').textContent = 'Reading the configured share index and checking recording files using Windows permissions. No logs copied yet.';
+    try {
+      const preview = await nucApi('preview', request);
+      nucPlan = preview.plan_id;
+      const summary = document.createElement('p');
+      summary.textContent = `${preview.files.length} files, ${preview.bytes.toLocaleString()} bytes. Local destination: ${preview.destination}. Preview expires in ${preview.expires_seconds / 60} minutes.`;
+      const list = document.createElement('ul');
+      for (const file of preview.files) {
+        const row = document.createElement('li');
+        row.textContent = `${file.name} (${file.size.toLocaleString()} bytes), ${file.start} to ${file.end}`;
+        list.appendChild(row);
+      }
+      $('nucInventory').append(summary, list);
+      $('nucExportStatus').textContent = 'Preview ready. Review this selection, then click Download approved files. Whole overlapping chunks are downloaded; complete clock/signal coverage is not yet verified.';
+    } catch (error) {
+      $('nucExportStatus').textContent = `Preview failed: ${error.message}`;
+    } finally { nucSetBusy(false); }
+    return;
+  }
+  $('nucExportStatus').textContent =
+    `Request reviewed locally: ${$('nucVin').value}, ${new Date(start).toISOString()} to ${new Date(end).toISOString()} (end exclusive). ` +
+    'Not submitted: the share-drive connector is not configured in this page. No logs downloaded.';
+});
+$('nucDownload').onclick = async () => {
+  if (nucBusy || !nucPlan) return;
+  const planId = nucPlan;
+  nucSetBusy(true);
+  $('nucExportStatus').textContent = 'Downloading approved files to the local server. Keep this page open; large recordings can take several minutes.';
+  try {
+    const result = await nucApi('download', { plan_id: planId });
+    $('nucExportStatus').textContent = `${result.message} ${result.files} files, ${result.bytes.toLocaleString()} bytes. Manifest: ${result.manifest}`;
+  } catch (error) {
+    $('nucExportStatus').textContent = `Download did not complete: ${error.message} Check the local session before retrying; do not assume no files were written.`;
+  } finally {
+    nucPlan = null;
+    nucSetBusy(false);
+  }
+};
+
 // ----------------------------------------------------------------- export
 function download(blob, name) {
   const a = document.createElement('a');
@@ -358,7 +648,7 @@ function showMetrics(m, f) {
     const cls = flag ? (f[flag] ? 'bad' : 'ok') : '';
     return `<tr class="${cls}"><td>${label}</td><td class="v">${Number.isFinite(m[k]) ? m[k].toFixed(1) : '–'} ${u}</td></tr>`;
   }).join('');
-  $('metrics').innerHTML = `<div class="title">Ergo metrics · ${spec.manikins[manikin].label}</div>${car.hasOpenPanels ? '<div class="muted">Closed-vehicle metrics (visual panels are open).</div>' : ''}<table>${rows}</table>`;
+  $('metrics').innerHTML = `<div class="title">Ergo metrics · ${spec.manikins[manikin].label}</div>${glbMode ? '<div class="muted">Parametric estimates only; not measured from the displayed GLB. The imported car remains static.</div>' : ''}${car.hasOpenPanels ? '<div class="muted">Closed-vehicle metrics (visual panels are open).</div>' : ''}<table>${rows}</table>`;
 }
 
 function refresh() {
@@ -451,7 +741,7 @@ const setMetrics = (open) => setDisclosure($('toggleMetrics'), $('metrics'), ope
 $('toggleControls').onclick = () => setControls($('toggleControls').getAttribute('aria-expanded') !== 'true');
 $('toggleMetrics').onclick = () => setMetrics($('toggleMetrics').getAttribute('aria-expanded') !== 'true');
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && compactQuery.matches && $('panel').classList.contains('open')) {
+  if (e.key === 'Escape' && !nucDialog.open && compactQuery.matches && $('panel').classList.contains('open')) {
     setControls(false);
     $('toggleControls').focus();
   }
@@ -467,6 +757,15 @@ function applyLayoutMode() {
 compactQuery.addEventListener('change', applyLayoutMode);
 applyLayoutMode();
 syncOpenings();
+if (defaultLocalGlb) {
+  loadCarGlb(spec.imported_vehicle.value.local_url, 'supplied local car GLB');
+} else {
+  $('vehicleVisual').value = 'parametric';
+  car.layers.imported_vehicle.visible = false;
+  layerInputs.get('imported_vehicle').checked = false;
+  layerInputs.get('imported_vehicle').disabled = true;
+  $('vehicleVisualStatus').textContent = 'Parametric estimates. The private GLB is not bundled; use Open local GLB to replace the vehicle.';
+}
 setCam('iso');
 requestAnimationFrame(frame);
-window.ergo = { spec, car, K, camera, controls, setCam, get manikin() { return manikin; }, get state() { return state; }, get timeline() { return timeline; } };
+window.ergo = { spec, car, K, camera, controls, setCam, importedCar, get glbMode() { return glbMode; }, get manikin() { return manikin; }, get state() { return state; }, get timeline() { return timeline; } };

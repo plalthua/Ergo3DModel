@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Manual MDF replay workflow test</title></head>
+<body>
+<pre id="result">RUNNING</pre>
+<iframe id="viewer" style="width:1200px;height:900px"></iframe>
+<script type="module">
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const frame = document.getElementById('viewer');
+const waitFor = async (check) => {
+  for (let i = 0; i < 200 && !check(); i++) await new Promise((resolve) => setTimeout(resolve, 50));
+  assert(check(), 'Timed out waiting for MDF workflow');
+};
+try {
+  const query = new URLSearchParams(location.search);
+  const targets = {
+    source: '../viewer/index.html', desktop: '../exports/EX60-3D-Viewer/viewer/index.html',
+    standalone: '../exports/EX60-3D-Viewer.html', teams: '../exports/EX60-Teams-Web/index.html',
+  };
+  const target = query.get('target') || 'source';
+  assert(Object.hasOwn(targets, target), 'Unknown target');
+  if (query.has('mobile')) frame.style.width = '390px';
+  frame.src = targets[target];
+  await waitFor(() => frame.contentWindow?.ergo);
+  const win = frame.contentWindow, doc = frame.contentDocument;
+  const get = (id) => doc.getElementById(id);
+  if (query.has('mobile')) get('toggleControls').click();
+  const sample = await (await fetch('../data/timelines/sample_timeline.json')).json();
+  let begins = 0, converts = 0, fail = false, popups = [];
+  const originalFetch = win.fetch.bind(win);
+  win.open = (url) => { popups.push(url); return null; };
+  win.fetch = async (url, options) => {
+    const response = (data, status = 200) =>
+      new win.Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+    if (url === '/api/nuc/mdf/begin') { begins++; return response({ session_id: 'test', folder: 'data\\logs' }); }
+    if (url === '/api/nuc/status') return response({ configured: false, message: 'No share configured' });
+    if (url === '/api/nuc/mdf/convert') {
+      converts++;
+      assert(JSON.parse(options.body).mapping_verified === true, 'Mapping confirmation missing');
+      if (fail) return response({ error: 'Download is unfinished' }, 400);
+      return response({ results: [
+        { name: 'one.mf4', path: 'data\\logs\\ergo-replay\\test\\one.json', timeline: sample },
+        { name: 'two.mf4', path: 'data\\logs\\ergo-replay\\test\\two.json', timeline: sample },
+      ], errors: [] });
+    }
+    return originalFetch(url, options);
+  };
+  get('openNucExport').click();
+  await waitFor(() => get('mdfSessionStatus').textContent.startsWith('Ready.'));
+  assert(begins === 1 && popups[0] === 'https://log-analyzer.nuc.volvocars.net/', 'Analyzer site/session not opened');
+  assert(get('openMdfWebsite').href === 'https://log-analyzer.nuc.volvocars.net/', 'Wrong fallback link');
+  assert(!get('logAnalyzerFrame').hasAttribute('src'), 'External frame loaded without opting in');
+  get('embedLogAnalyzer').click();
+  assert(get('logAnalyzerFrame').src === 'https://log-analyzer.nuc.volvocars.net/' &&
+    get('embedLogAnalyzer').getAttribute('aria-expanded') === 'true' &&
+    !get('logAnalyzerEmbed').hidden, 'Embedded view was not requested');
+  const rect = get('nucExportDialog').getBoundingClientRect();
+  assert(rect.left >= 0 && rect.right <= win.innerWidth &&
+    get('nucExportDialog').scrollWidth <= get('nucExportDialog').clientWidth, 'Dialog overflows');
+  get('closeNucExport').click();
+  await waitFor(() => get('mdfImportStatus').textContent.includes('not started'));
+  assert(!get('logAnalyzerFrame').hasAttribute('src') && get('logAnalyzerEmbed').hidden,
+    'Embedded page was not unloaded on close');
+  assert(converts === 0, 'Unconfirmed mapping was converted');
+  get('openNucExport').click();
+  get('mdfMappingVerified').checked = true;
+  fail = true;
+  get('nucExportDialog').close();
+  await waitFor(() => get('mdfImportStatus').textContent.includes('unfinished'));
+  assert(!get('mdfRetry').hidden, 'Failed conversion cannot be retried');
+  fail = false;
+  get('mdfRetry').click();
+  await waitFor(() => get('mdfImportStatus').textContent.startsWith('2 replay'));
+  assert(win.ergo.timeline?.format === 'ergo3d-timeline/1', 'Replay not loaded automatically');
+  assert(get('mdfReplayFiles').options.length === 2, 'Recordings were not kept separate');
+  get('mdfReplayFiles').value = '1';
+  get('mdfReplayFiles').dispatchEvent(new win.Event('change'));
+  assert(get('tlInfo').textContent.startsWith('two.mf4'), 'Recording selector failed');
+  assert(get('mdfRetry').hidden && !get('openNucExport').disabled, 'Busy controls did not reset');
+  assert(begins === 1 && converts === 2, 'Retry lost the original download session');
+  get('openNucExport').click();
+  await waitFor(() => begins === 2);
+  document.getElementById('result').textContent = JSON.stringify({ status: 'PASS', target, mobile: query.has('mobile') });
+} catch (error) {
+  document.getElementById('result').textContent = `FAIL: ${error.stack}`;
+}
+</script>
+</body>
+</html>
