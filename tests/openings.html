@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><title>Opening panel integration test</title>
+</head>
+<body>
+<pre id="result">RUNNING</pre>
+<iframe id="viewer" style="width:1200px;height:900px"></iframe>
+<script type="module">
+import * as THREE from '../viewer/vendor/three.module.js';
+const frame = document.getElementById('viewer');
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const wait = () => new Promise((resolve) => setTimeout(resolve, 100));
+try {
+  const query = new URLSearchParams(location.search);
+  const targets = {
+    source: '../viewer/index.html',
+    standalone: '../exports/EX60-3D-Viewer.html',
+    desktop: '../exports/EX60-3D-Viewer/viewer/index.html',
+    teams: '../exports/EX60-Teams-Web/index.html',
+  };
+  const target = query.get('target') || 'source';
+  assert(Object.hasOwn(targets, target), 'Unknown viewer test target');
+  if (query.has('mobile')) frame.style.width = '390px';
+  await new Promise((resolve) => { frame.onload = resolve; frame.src = targets[target]; });
+  for (let i = 0; i < 100 && !frame.contentWindow.ergo; i++) await wait();
+  const { car, spec, K, state } = frame.contentWindow.ergo || {};
+  assert(car, 'Viewer failed to initialize');
+  const doc = frame.contentDocument;
+  if (query.has('mobile')) {
+    doc.getElementById('toggleControls').click();
+    assert(doc.getElementById('toggleControls').getAttribute('aria-expanded') === 'true' &&
+      doc.getElementById('panel').classList.contains('open'), 'Mobile controls drawer failed to open');
+  }
+  const buttons = [...doc.querySelectorAll('#openingControls button')];
+  assert(buttons.length === 5, 'Expected four door controls and a tailgate control');
+  const vertex = (mesh, index = 0) => {
+    car.root.updateMatrixWorld(true);
+    return new THREE.Vector3().fromBufferAttribute(mesh.geometry.getAttribute('position'), index)
+      .applyMatrix4(mesh.matrixWorld).applyMatrix4(car.root.matrixWorld.clone().invert());
+  };
+  const ids = Object.keys(car.openings);
+  const closed = new Map();
+  car.root.updateMatrixWorld(true);
+  car.root.traverse((object) => { if (object.isMesh) closed.set(object, object.matrixWorld.clone()); });
+  const bumper = car.root.getObjectByName('fixed_rear_bumper');
+  const bumperClosed = vertex(bumper);
+  const metrics = Object.fromEntries(Object.keys(spec.manikins).map((id) => [id, K.ergoMetrics(spec, state, id)]));
+  const openingSpec = spec.visual_reconstruction.openings;
+  assert(openingSpec.confidence === 'estimate' &&
+    spec.meta.sources.some((source) => source.id === openingSpec.source), 'Missing hinge estimate provenance');
+  const inspectionControl = doc.getElementById('inspectionTransparency');
+  assert(!inspectionControl.checked && !car.inspectionEnabled, 'Roof inspection mode should start disabled');
+  const paint = car.root.getObjectByName('rear_left_skin').material;
+  const checkDoorTransparency = () => {
+    for (const end of ['front', 'rear']) {
+      for (const [side, sign] of [['left', -1], ['right', 1]]) {
+        for (const name of [`${end}_${side}_skin`, `${end}_side_${sign}`]) {
+          const material = car.root.getObjectByName(name).material;
+          assert(material.opacity === 0.4 && material.transparent && !material.depthWrite && material.forceSinglePass,
+            `${name}: expected 60 percent transparency`);
+        }
+      }
+    }
+  };
+  checkDoorTransparency();
+  inspectionControl.click();
+  checkDoorTransparency();
+  assert(car.inspectionEnabled && paint.opacity === spec.visual_reconstruction.inspection_transparency.value.door_opacity &&
+    paint.transparent && !paint.depthWrite && paint.forceSinglePass, 'Inspection mode did not restore single-pass transparency');
+  inspectionControl.click();
+  checkDoorTransparency();
+  for (const obsolete of ['front_door_seam', 'rear_door_seam', 'liftgate_shutline']) {
+    for (const side of [-1, 1]) assert(!car.root.getObjectByName(`${obsolete}_${side}`), `Obsolete floating outline: ${obsolete}`);
+  }
+  for (const side of [-1, 1]) {
+    const sideName = side < 0 ? 'left' : 'right';
+    const ranges = [openingSpec.value.front_x, openingSpec.value.rear_x];
+    for (const [i, end] of ['front', 'rear'].entries()) {
+      const skin = car.root.getObjectByName(`${end}_${sideName}_skin`);
+      const p = skin.geometry.getAttribute('position');
+      const xs = Array.from({ length: p.count }, (_, j) => p.getX(j));
+      assert(Math.abs(Math.min(...xs) - ranges[i][0]) < 0.001 &&
+        Math.abs(Math.max(...xs) - ranges[i][1]) < 0.001, 'Door skin does not fill the specified aperture');
+      const returns = car.root.getObjectByName(`${end}_${sideName}_edge_return`);
+      assert(returns?.isMesh, 'Missing finished door edge');
+      for (const name of [`${end}_side_glazing_trim_${side}`, `${end}_door_handle_${side}`]) {
+        const detail = car.root.getObjectByName(name);
+        assert(detail, `Missing detail: ${name}`);
+        detail.traverse((mesh) => {
+          if (!mesh.isMesh) return;
+          const positions = mesh.geometry.getAttribute('position');
+          for (let j = 0; j < positions.count; j++) {
+            assert(vertex(mesh, j).y * side > 0, `${name}: detail was attached from the opposite side`);
+          }
+          if (name.includes('glazing_trim')) {
+            assert(mesh.geometry.type === 'BufferGeometry', 'Tubular duplicate window frame returned');
+          }
+        });
+      }
+    }
+    car.layers.body.traverse((mesh) => {
+      if (!mesh.name.startsWith(`painted_side_panel_${side}_`)) return;
+      const p = mesh.geometry.getAttribute('position');
+      const xs = Array.from({ length: p.count }, (_, j) => p.getX(j));
+      assert(Math.max(...xs) <= ranges[0][0] || Math.min(...xs) >= ranges[1][1],
+        'Stationary side skin blocks an opening');
+    });
+  }
+  const tailgate = car.root.getObjectByName('tailgate').geometry.getAttribute('position');
+  for (let i = 0; i < tailgate.count; i++) {
+    assert(Math.abs(tailgate.getY(i)) <= openingSpec.value.tailgate_half_width_mm + 0.001,
+      'Tailgate still contains the full-width fixed rear corners');
+  }
+  const refinement = spec.visual_reconstruction.exterior_refinement.value;
+  const gateDeck = car.root.getObjectByName('liftgate_upper_shoulder').geometry.getAttribute('position');
+  for (const side of [-1, 1]) {
+    const shoulder = car.root.getObjectByName(`fixed_rear_shoulder_${side}`).geometry.getAttribute('position');
+    const stride = refinement.deck_rows + 1;
+    for (let col = 0; col < gateDeck.count / stride; col++) {
+      const gateEdge = new THREE.Vector3().fromBufferAttribute(gateDeck, col * stride + (side < 0 ? 0 : stride - 1));
+      const fixedEdge = new THREE.Vector3().fromBufferAttribute(shoulder, col * stride);
+      assert(gateEdge.distanceTo(fixedEdge) < 0.001, 'Gap or overlap between hatch shoulder and stationary corner');
+    }
+    for (let j = 0; j < shoulder.count; j++) {
+      assert(shoulder.getY(j) * side >= openingSpec.value.tailgate_half_width_mm - 0.001,
+        'Stationary shoulder overlays the central hatch');
+    }
+    const corner = car.root.getObjectByName(`fixed_rear_corner_${side}`).geometry.getAttribute('position');
+    for (let row = 0; row <= refinement.end_rows; row++) {
+      const column = side < 0 ? 0 : refinement.deck_rows;
+      const gateEdge = new THREE.Vector3().fromBufferAttribute(tailgate, column * (refinement.end_rows + 1) + row);
+      const fixedEdge = new THREE.Vector3().fromBufferAttribute(corner, row);
+      assert(gateEdge.distanceTo(fixedEdge) < 0.001, 'Gap or overlap between hatch and stationary rear lamp corner');
+    }
+  }
+  const stationary = ['fixed_rear_corner_-1', 'fixed_rear_corner_1', 'fixed_rear_shoulder_-1', 'fixed_rear_shoulder_1',
+    'cargo_floor', 'cargo_wheelhouse_top_-1', 'cargo_wheelhouse_top_1', 'cargo_wheelhouse_inner_-1', 'cargo_wheelhouse_inner_1'];
+  const stationaryPoints = stationary.map((name) => {
+    const mesh = car.root.getObjectByName(name);
+    assert(mesh, `Missing stationary rear panel: ${name}`);
+    return vertex(mesh);
+  });
+  for (const [i, id] of ids.entries()) {
+    const opening = car.openings[id];
+    assert(!opening.open, `${id}: initial state must be closed`);
+    const meshes = [];
+    for (const pivot of opening.pivots) pivot.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    assert(meshes.length >= 3, `${id}: missing moving panels`);
+    const points = meshes.map((mesh) => vertex(mesh));
+    buttons[i].click();
+    assert(opening.open && car.hasOpenPanels, `${id}: open button failed`);
+    assert(buttons[i].textContent.startsWith('Close'), `${id}: incorrect button state`);
+    const hinge = new THREE.Vector3(...opening.hinge);
+    const rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...opening.axis),
+      THREE.MathUtils.degToRad(opening.open_angle_deg));
+    for (const [j, mesh] of meshes.entries()) {
+      const expected = points[j].clone().sub(hinge).applyQuaternion(rotation).add(hinge);
+      const actual = vertex(mesh);
+      assert(actual.distanceTo(expected) < 1e-5,
+        `${id}: detached or incorrectly transformed ${mesh.name}: ${actual.toArray()} expected ${expected.toArray()}`);
+    }
+    const skin = car.root.getObjectByName(id === 'tailgate' ? 'tailgate' : `${id}_skin`);
+    const before = vertex(skin);
+    if (id === 'tailgate') {
+      assert(before.z > spec.visual_reconstruction.openings.value.tailgate_bottom_z, 'Tailgate must lift upward');
+    } else {
+      const end = vertex(skin, skin.geometry.getAttribute('position').count - 1);
+      assert(Math.abs(end.y) > Math.abs(opening.hinge[1]) + 100, `${id}: door must swing outward`);
+    }
+    assert(vertex(bumper).distanceTo(bumperClosed) < 1e-8, 'Rear bumper moved');
+    stationary.forEach((name, j) => assert(vertex(car.root.getObjectByName(name)).distanceTo(stationaryPoints[j]) < 1e-8,
+      `Fixed rear panel moved with hatch: ${name}`));
+    assert(!car.layers.sightlines.visible, 'Open-panel mirror sightlines must be hidden');
+    for (const profile of Object.keys(metrics)) {
+      assert(JSON.stringify(K.ergoMetrics(spec, state, profile)) === JSON.stringify(metrics[profile]),
+        `${profile}: visual articulation changed metrics`);
+    }
+    buttons[i].click();
+    assert(!opening.open && !car.hasOpenPanels, `${id}: close button failed`);
+    car.root.updateMatrixWorld(true);
+    for (const mesh of meshes) {
+      assert(mesh.matrixWorld.elements.every((v, j) => Math.abs(v - closed.get(mesh).elements[j]) < 1e-8),
+        `${id}: closing did not restore ${mesh.name}`);
+    }
+    for (const panel of ['front_side', 'rear_side', 'quarter', 'rear_window']) {
+      for (const side of panel === 'rear_window' ? [1] : [-1, 1]) {
+        const glass = car.root.getObjectByName(`${panel}_${side}`);
+        const trim = car.root.getObjectByName(`${panel}_glazing_trim_${side}`);
+        assert(trim.children.length === 4, `${panel}: expected one seal, not multiple stacked frames`);
+        const positions = glass.geometry.getAttribute('position');
+        const columns = spec.visual_reconstruction.exterior_refinement.value.glass_rows;
+        const normal = new THREE.Vector3().fromBufferAttribute(glass.geometry.getAttribute('normal'), 0);
+        const start = vertex(glass);
+        const sealStart = vertex(trim.children[0]);
+        assert(sealStart.distanceTo(start) <= openingSpec.value.glazing_seal_offset_mm + 0.001,
+          `${panel}: seal is floating away from glass`);
+        assert(positions.count === (columns + 1) ** 2 && Number.isFinite(normal.length()), `${panel}: invalid glazing`);
+      }
+    }
+  }
+  for (const [id, names] of Object.entries(spec.visual_reconstruction.openings.value.attachments)) {
+    for (const name of names) {
+      const mesh = car.root.getObjectByName(name);
+      assert(car.openings[id].pivots.some((pivot) => pivot.getObjectById(mesh.id)),
+        `${name}: attachment not on ${id}`);
+    }
+  }
+  for (const side of ['left', 'right']) {
+    const mirror = car.mirrors[side].group;
+    assert(car.openings[`front_${side}`].pivots.some((p) => p.getObjectById(mirror.id)),
+      `${side}: exterior mirror not attached to front door`);
+  }
+  doc.getElementById('openAllDoors').click();
+  assert(ids.every((id) => car.openings[id].open), 'Open all failed');
+  await wait();
+  assert(!doc.getElementById('pipLabels').textContent.trim(), 'Open-panel mirror insets still displayed');
+  assert(doc.getElementById('metrics').textContent.includes('Closed-vehicle'), 'Missing metrics caveat');
+  const snapshot = Object.fromEntries(ids.map((id) => [id, car.openings[id].pivots.map((p) => p.quaternion.clone())]));
+  car.update({ ...state, mirror_left_yaw: state.mirror_left_yaw + 1 }, 'p50_male');
+  assert(ids.every((id) => car.openings[id].pivots.every((p, i) => p.quaternion.equals(snapshot[id][i]))),
+    'Adjustment/replay update reset opening state');
+  doc.getElementById('closeAllDoors').click();
+  assert(ids.every((id) => !car.openings[id].open), 'Close all failed');
+  const sightlines = [...doc.querySelectorAll('#toggles label')].find((l) => l.textContent.includes('sightlines')).querySelector('input');
+  sightlines.click();
+  doc.getElementById('openAllDoors').click();
+  doc.getElementById('closeAllDoors').click();
+  await wait();
+  assert(!car.layers.sightlines.visible, 'Closing/insets overrode sightline layer toggle');
+  assert(doc.getElementById('openingStatus').textContent.includes('closed'), 'Missing closed status');
+  if (query.has('open')) doc.getElementById('openAllDoors').click();
+  document.getElementById('result').textContent = JSON.stringify({
+    status: 'PASS', target, mobile: query.has('mobile'), panels: ids, metric_deltas: 0,
+  });
+} catch (error) {
+  document.getElementById('result').textContent = `FAIL: ${error.stack}`;
+}
+</script>
+</body>
+</html>

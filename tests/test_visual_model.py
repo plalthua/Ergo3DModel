@@ -59,7 +59,7 @@ class VisualModelSpec(unittest.TestCase):
     def test_inspection_transparency_is_see_through_and_localized(self):
         visual = SPEC["visual_reconstruction"]
         inspection = visual["inspection_transparency"]["value"]
-        self.assertTrue(0 < inspection["door_opacity"] < 0.3)
+        self.assertEqual(inspection["door_opacity"], 0.4)
         self.assertTrue(0 < inspection["roof_opacity"] < 0.3)
         self.assertTrue(0 < visual["roof_glass_opacity"] < 0.3)
         self.assertLess(inspection["door_x_min"], inspection["door_x_max"])

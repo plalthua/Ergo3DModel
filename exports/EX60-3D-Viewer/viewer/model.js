@@ -70,6 +70,12 @@ function gridSurface(xs, rows, point, material, groupForInterval) {
   return new THREE.Mesh(geometry, material);
 }
 
+function edgeReturn(points, offset, material) {
+  const samples = Array.from({ length: points.length + 1 }, (_, i) => i);
+  return gridSurface(samples, 1, (i, t) =>
+    points[i % points.length].map((value, axis) => value + offset[axis] * t), material);
+}
+
 // Original procedural studio illumination, not a photographic texture.
 export function studioEnvironment(renderer, spec) {
   const d = val(spec.visual_reconstruction.exterior_refinement).studio;
@@ -305,6 +311,10 @@ export class Ex60Scene {
     this.root.rotation.x = -Math.PI / 2; // vehicle Z-up -> three.js Y-up
     this.root.scale.setScalar(0.001); // mm -> m
     this.layers = {};
+    this.inspectionMaterials = new Map();
+    this.inspectionEnabled = true;
+    this.openings = Object.fromEntries(Object.entries(val(spec.visual_reconstruction.openings).panels)
+      .map(([id, definition]) => [id, { ...definition, open: false, pivots: [] }]));
     const surface = val(spec.visual_reconstruction.reference_remodel).surface;
     this.fineWeave = wovenTexture(surface, false);
     this.perforatedWeave = wovenTexture(surface, true);
@@ -315,6 +325,7 @@ export class Ex60Scene {
     this._buildSeat();
     this._buildSteering();
     this._buildMirrors();
+    this._attachOpeningDetails();
     this._buildManikin();
     this._buildSightlines();
     this._buildR46Zones();
@@ -356,6 +367,69 @@ export class Ex60Scene {
     return this.root.localToWorld(V(p));
   }
 
+  _openingParent(layer, id) {
+    const opening = this.openings[id];
+    const existing = opening.pivots.find((pivot) => pivot.parent === layer);
+    if (existing) return existing.children[0];
+    const pivot = new THREE.Group(), content = new THREE.Group();
+    pivot.name = `${id}_${layer.name}_hinge`;
+    pivot.position.copy(V(opening.hinge));
+    content.name = `${id}_${layer.name}_panels`;
+    content.position.copy(V(opening.hinge).negate());
+    pivot.add(content);
+    layer.add(pivot);
+    opening.pivots.push(pivot);
+    return content;
+  }
+
+  _doorAt(x, side) {
+    const d = val(this.spec.visual_reconstruction.openings);
+    const suffix = side < 0 ? 'left' : 'right';
+    if (x >= d.front_x[0] && x < d.front_x[1]) return `front_${suffix}`;
+    if (x >= d.rear_x[0] && x < d.rear_x[1]) return `rear_${suffix}`;
+    return null;
+  }
+
+  _attachOpeningDetails() {
+    const attachments = val(this.spec.visual_reconstruction.openings).attachments;
+    for (const [id, names] of Object.entries(attachments)) {
+      for (const name of names) {
+        const mesh = this.root.getObjectByName(name);
+        if (!mesh) throw new Error(`Missing opening attachment: ${name}`);
+        this._openingParent(mesh.parent, id).add(mesh);
+      }
+    }
+  }
+
+  setOpening(id, open) {
+    const opening = this.openings[id];
+    if (!opening || typeof open !== 'boolean') throw new Error(`Invalid opening state: ${id}`);
+    opening.open = open;
+    for (const pivot of opening.pivots) {
+      pivot.quaternion.setFromAxisAngle(V(opening.axis), open ? THREE.MathUtils.degToRad(opening.open_angle_deg) : 0);
+    }
+  }
+
+  get hasOpenPanels() {
+    return Object.values(this.openings).some((opening) => opening.open);
+  }
+
+  _inspectionMaterial(material, exteriorOpacity) {
+    material.forceSinglePass = true;
+    this.inspectionMaterials.set(material, { inspectionOpacity: material.opacity, exteriorOpacity });
+  }
+
+  setInspectionTransparency(enabled) {
+    if (typeof enabled !== 'boolean') throw new Error('Inspection transparency must be a boolean');
+    this.inspectionEnabled = enabled;
+    for (const [material, { inspectionOpacity, exteriorOpacity }] of this.inspectionMaterials) {
+      material.opacity = enabled ? inspectionOpacity : exteriorOpacity;
+      material.transparent = material.opacity < 1;
+      material.depthWrite = !material.transparent;
+      material.needsUpdate = true;
+    }
+  }
+
   // ---------------------------------------------------------------- static
   _buildBody() {
     const veh = this.spec.vehicle, visual = this.spec.visual_reconstruction;
@@ -378,6 +452,8 @@ export class Ex60Scene {
     doorPaint.depthWrite = false;
     const roofPaint = doorPaint.clone();
     roofPaint.opacity = inspection.roof_opacity;
+    this._inspectionMaterial(doorPaint, inspection.door_opacity);
+    this._inspectionMaterial(roofPaint, 1);
     const sillZ = val(visual.body_sill_z_mm);
     const wheelRadius = val(veh.wheel_diameter) / 2;
     const arch = visual.wheel_arch;
@@ -389,6 +465,9 @@ export class Ex60Scene {
     const firstX = baseSections[0][0], lastX = baseSections[baseSections.length - 1][0];
     xSamples.add(inspection.door_x_min);
     xSamples.add(inspection.door_x_max);
+    const openingSpec = val(visual.openings);
+    const edgeMaterial = new THREE.MeshStandardMaterial({ ...openingSpec.edge_material, side: THREE.DoubleSide });
+    for (const x of [...openingSpec.front_x, ...openingSpec.rear_x]) xSamples.add(x);
     for (let i = 0; i < sections.length - 1; i++) {
       for (let step = 1; step < 8; step++) {
         xSamples.add(sections[i][0] + (sections[i + 1][0] - sections[i][0]) * step / 8);
@@ -435,12 +514,29 @@ export class Ex60Scene {
             archCenterZ + archRadius * Math.sin(angle),
           ]));
         }
-        const lip = new THREE.Mesh(
-          new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 48, val(arch.fender_lip_mm) / 2, 8, false),
-          paint,
-        );
-        lip.name = `painted_fender_lip_${wheelX}_${side}`;
-        body.add(lip);
+        // Split the rear arch lip at door boundaries; the wheel-house liner stays fixed.
+        const curve = new THREE.CatmullRomCurve3(points);
+        const lipXs = [wheelX - archRadius * Math.cos(archAngle), wheelX + archRadius * Math.cos(archAngle)];
+        const cuts = [0, 1];
+        for (const x of [...openingSpec.front_x, ...openingSpec.rear_x]) {
+          if (x <= lipXs[0] || x >= lipXs[1]) continue;
+          let lo = 0, hi = 1;
+          for (let i = 0; i < 40; i++) {
+            const mid = (lo + hi) / 2;
+            if (curve.getPoint(mid).x > x) lo = mid; else hi = mid;
+          }
+          cuts.push((lo + hi) / 2);
+        }
+        cuts.sort((a, b) => a - b);
+        for (let i = 1; i < cuts.length; i++) {
+          const a = cuts[i - 1], b = cuts[i];
+          const segment = new THREE.Curve();
+          segment.getPoint = (t, target = new THREE.Vector3()) => curve.getPoint(a + (b - a) * t, target);
+          const lip = new THREE.Mesh(new THREE.TubeGeometry(segment, 32, val(arch.fender_lip_mm) / 2, 8, false), paint);
+          lip.name = `painted_fender_lip_${wheelX}_${side}_${i}`;
+          const id = this._doorAt(curve.getPoint((a + b) / 2).x, side);
+          (id ? this._openingParent(body, id) : body).add(lip);
+        }
         const angles = Array.from({ length: 49 }, (_, i) => archAngle + (Math.PI - 2 * archAngle) * i / 48);
         const returnSkin = gridSurface(angles, 1, (angle, t) => {
           const x = wheelX + archRadius * Math.cos(angle), z = archCenterZ + archRadius * Math.sin(angle);
@@ -449,14 +545,33 @@ export class Ex60Scene {
         returnSkin.name = `wheel_arch_return_${wheelX}_${side}`;
         body.add(returnSkin);
       }
-      const sidePanel = gridSurface(xs, val(d.side_rows), (x, t) => {
+      const sidePoint = (x, t) => {
         const z = lower(x) + (interpolate(x, 2) - lower(x)) * t;
         const height = (z - sillZ) / (interpolate(x, 2) - sillZ);
         return [cornerX(x, height), side * sideWidth(x, z), z];
-      }, [paint, doorPaint], (a, b) => a >= inspection.door_x_min && b <= inspection.door_x_max ? 1 : 0);
-      sidePanel.name = `painted_side_panel_${side}`;
-      surfaceUV(sidePanel, [surface.paint_tile_mm, surface.paint_tile_mm], ['x', 'z']);
-      body.add(sidePanel);
+      };
+      const boundaries = [firstX, ...openingSpec.front_x, openingSpec.rear_x[1], lastX];
+      for (let i = 1; i < boundaries.length; i++) {
+        const a = boundaries[i - 1], b = boundaries[i];
+        const id = this._doorAt((a + b) / 2, side);
+        const sidePanel = gridSurface(xs.filter((x) => x >= a && x <= b), val(d.side_rows),
+          sidePoint, id ? doorPaint : paint);
+        sidePanel.name = id ? `${id}_skin` : `painted_side_panel_${side}_${i}`;
+        surfaceUV(sidePanel, [surface.paint_tile_mm, surface.paint_tile_mm], ['x', 'z']);
+        (id ? this._openingParent(body, id) : body).add(sidePanel);
+        if (id) {
+          const positions = sidePanel.geometry.getAttribute('position'), stride = val(d.side_rows) + 1;
+          const columns = positions.count / stride, perimeter = [];
+          for (let col = 0; col < columns; col++) perimeter.push(col * stride);
+          for (let row = 1; row < stride; row++) perimeter.push((columns - 1) * stride + row);
+          for (let col = columns - 2; col >= 0; col--) perimeter.push(col * stride + stride - 1);
+          for (let row = stride - 2; row > 0; row--) perimeter.push(row);
+          const returns = edgeReturn(perimeter.map((index) => new THREE.Vector3()
+            .fromBufferAttribute(positions, index).toArray()), [0, -side * val(visual.body_panel_thickness_mm), 0], edgeMaterial);
+          returns.name = `${id}_edge_return`;
+          this._openingParent(body, id).add(returns);
+        }
+      }
     }
 
     const deckPoint = (x, t) => {
@@ -489,11 +604,30 @@ export class Ex60Scene {
     hood.name = 'sculpted_hood';
     surfaceUV(hood, [surface.paint_tile_mm, surface.paint_tile_mm]);
     body.add(hood);
-    const tailDeck = gridSurface(xs.filter((x) => x >= val(d.tail_deck_start_x)), val(d.deck_rows),
-      deckPoint, paint);
+    const tailXs = xs.filter((x) => x >= val(d.tail_deck_start_x));
+    const gateRatio = (x) => val(openingSpec.tailgate_half_width_mm) / sideWidth(x, interpolate(x, 2));
+    const gateDeckPoint = (x, t) => deckPoint(x, (1 + (2 * t - 1) * gateRatio(x)) / 2);
+    const tailDeck = gridSurface(tailXs, val(d.deck_rows), gateDeckPoint, paint);
     tailDeck.name = 'liftgate_upper_shoulder';
     surfaceUV(tailDeck, [surface.paint_tile_mm, surface.paint_tile_mm]);
     body.add(tailDeck);
+    const rearWindow = visual.glazing.find((p) => p.name === 'rear_window').points;
+    const gateSideEdges = {};
+    for (const side of [-1, 1]) {
+      const shoulder = gridSurface(tailXs, val(d.deck_rows), (x, t) => deckPoint(x,
+        (1 + side * (gateRatio(x) + (1 - gateRatio(x)) * t)) / 2), paint);
+      shoulder.name = `fixed_rear_shoulder_${side}`;
+      body.add(shoulder);
+      const top = V(rearWindow[side < 0 ? 0 : 1]), bottom = V(rearWindow[side < 0 ? 3 : 2]);
+      const outerTop = top.clone().add(new THREE.Vector3(0, side * val(openingSpec.tailgate_window_border_mm), 0));
+      const outerBottom = V(gateDeckPoint(tailXs[0], side < 0 ? 0 : 1));
+      const samples = Array.from({ length: val(d.glass_rows) + 1 }, (_, i) => i / val(d.glass_rows));
+      const rail = gridSurface(samples, 2, (u, t) =>
+        top.clone().lerp(bottom, u).lerp(outerTop.clone().lerp(outerBottom, u), t).toArray(), paint);
+      rail.name = `tailgate_window_surround_${side}`;
+      body.add(rail);
+      gateSideEdges[side] = samples.map((t) => outerTop.clone().lerp(outerBottom, t).toArray());
+    }
     const roof = this.layer('body_roof');
     const roofRows = d.roof_sections;
     const pano = visual.glazing.find((p) => p.name === 'panoramic_roof').points;
@@ -524,7 +658,7 @@ export class Ex60Scene {
     ]) {
       const x = section[0];
       const samples = Array.from({ length: val(d.deck_rows) + 1 }, (_, i) => i / val(d.deck_rows));
-      const fascia = gridSurface(samples, val(d.end_rows), (u, t) => {
+      const fasciaPoint = (u, t) => {
         const upper = deckPoint(x, u);
         const top = direction === 1 ? interpolate(x, 2) + (interpolate(x, 3) - interpolate(x, 2)) *
           (1 - Math.abs(2 * u - 1) ** val(d.deck_roundness)) : upper[2];
@@ -532,22 +666,80 @@ export class Ex60Scene {
         const profile = direction < 0 ? smoothValue(d.front_end_profile, t, 1) : 0;
         return [x + corners + direction * (val(d.end_crown_mm) * Math.sin(Math.PI * t) + profile) * Math.sin(Math.PI * u),
           upper[1], sillZ + (top - sillZ) * t];
+      };
+      const fascia = gridSurface(samples, val(d.end_rows), (u, t) => {
+        if (direction < 0) return fasciaPoint(u, t);
+        const ratio = gateRatio(x), gateU = (1 + (2 * u - 1) * ratio) / 2;
+        const top = fasciaPoint(gateU, 1)[2];
+        const bottom = (val(openingSpec.tailgate_bottom_z) - sillZ) / (top - sillZ);
+        return fasciaPoint(gateU, bottom + (1 - bottom) * t);
       }, paint);
       fascia.name = name;
       body.add(fascia);
+      if (direction > 0) {
+        const gateEdges = {};
+        for (const side of [-1, 1]) {
+          const cheek = gridSurface(samples, val(d.end_rows), (u, t) => {
+            const cheekU = (1 + side * (gateRatio(x) + (1 - gateRatio(x)) * u)) / 2;
+            const top = fasciaPoint(cheekU, 1)[2];
+            const bottom = (val(openingSpec.tailgate_bottom_z) - sillZ) / (top - sillZ);
+            return fasciaPoint(cheekU, bottom + (1 - bottom) * t);
+          }, paint);
+          cheek.name = `fixed_rear_corner_${side}`;
+          body.add(cheek);
+          const positions = fascia.geometry.getAttribute('position');
+          const column = side < 0 ? 0 : val(d.deck_rows);
+          gateEdges[side] = Array.from({ length: val(d.end_rows) + 1 }, (_, i) =>
+            new THREE.Vector3().fromBufferAttribute(positions, column * (val(d.end_rows) + 1) + i).toArray());
+        }
+        const perimeter = [
+          ...gateSideEdges[-1],
+          ...tailXs.slice(1).map((x) => gateDeckPoint(x, 0)),
+          ...gateEdges[-1].slice(0, -1).reverse(),
+          ...samples.slice(1).map((u) => {
+            const gateU = (1 + (2 * u - 1) * gateRatio(x)) / 2;
+            const top = fasciaPoint(gateU, 1)[2];
+            return fasciaPoint(gateU, (val(openingSpec.tailgate_bottom_z) - sillZ) / (top - sillZ));
+          }),
+          ...gateEdges[1].slice(1),
+          ...tailXs.slice(0, -1).reverse().map((x) => gateDeckPoint(x, 1)),
+          ...gateSideEdges[1].slice(0, -1).reverse(),
+        ];
+        const returns = edgeReturn(perimeter, [-val(visual.body_panel_thickness_mm), 0, 0], edgeMaterial);
+        returns.name = 'tailgate_edge_return';
+        body.add(returns);
+        const bumper = gridSurface(samples, val(d.end_rows), (u, t) => {
+          const top = fasciaPoint(u, 1)[2];
+          return fasciaPoint(u, t * (val(openingSpec.tailgate_bottom_z) - sillZ) / (top - sillZ));
+        }, paint);
+        bumper.name = 'fixed_rear_bumper';
+        body.add(bumper);
+      }
     }
     // Narrow belt returns meet the actual window corners, rather than leaving a slit.
     for (const side of [-1, 1]) {
       const belt = d.belt_sections;
       const beltXs = [...new Set([...xs, ...belt.map((r) => r[0])])]
         .filter((x) => x >= belt[0][0] && x <= belt[belt.length - 1][0]).sort((a, b) => a - b);
-      const mesh = gridSurface(beltXs, 2, (x, t) => [
+      const beltPoint = (x, t) => [
         x, side * (sideWidth(x, interpolate(x, 2)) * (1 - t) + smoothValue(belt, x, 1) * t),
         interpolate(x, 2) * (1 - t) + smoothValue(belt, x, 2) * t,
-      ], [paint, doorPaint], (a, b) => a >= inspection.door_x_min && b <= inspection.door_x_max ? 1 : 0);
-      mesh.name = `window_belt_return_${side}`;
-      body.add(mesh);
+      ];
+      const boundaries = [beltXs[0], ...openingSpec.front_x, openingSpec.rear_x[1], beltXs[beltXs.length - 1]]
+        .filter((x, i, all) => x >= beltXs[0] && x <= beltXs[beltXs.length - 1] && all.indexOf(x) === i)
+        .sort((a, b) => a - b);
+      for (let i = 1; i < boundaries.length; i++) {
+        const a = boundaries[i - 1], b = boundaries[i], id = this._doorAt((a + b) / 2, side);
+        const mesh = gridSurface(beltXs.filter((x) => x >= a && x <= b), 2, beltPoint, id ? doorPaint : paint);
+        mesh.name = `window_belt_return_${side}_${i}`;
+        (id ? this._openingParent(body, id) : body).add(mesh);
+      }
     }
+    const pillarTrim = new THREE.MeshStandardMaterial({
+      ...val(d.materials.black), transparent: true, opacity: inspection.roof_opacity,
+      depthWrite: false, side: THREE.DoubleSide,
+    });
+    this._inspectionMaterial(pillarTrim, 1);
     for (const pillar of visual.pillars) {
       for (const side of [-1, 1]) {
         const geometry = new THREE.BufferGeometry();
@@ -556,15 +748,11 @@ export class Ex60Scene {
         ));
         geometry.setIndex([0, 1, 2, 0, 2, 3]);
         geometry.computeVertexNormals();
-        const mesh = new THREE.Mesh(geometry, paint);
+        const mesh = new THREE.Mesh(geometry, pillar.name === 'a_pillar' ? roofPaint : pillarTrim);
         mesh.name = `${pillar.name}_${side}`;
         roof.add(mesh);
       }
     }
-    roof.traverse((object) => {
-      if (object.isMesh) object.material = roofPaint;
-    });
-
     this._buildRoadWheels();
     this._buildPhotoDetails();
     this._buildExteriorRefinement(paint, (x, y) => deckPoint(x,
@@ -602,6 +790,7 @@ export class Ex60Scene {
       }
     }
     for (const stroke of d.strokes) {
+      if (d.replaced_strokes.includes(stroke.name)) continue;
       for (const side of stroke.mirror_y ? [-1, 1] : [1]) {
         const points = stroke.points.map(([x, y, z]) => V([
           x, side * y, stroke.surface === 'hood' ? hoodHeight(x, y) + val(stroke.surface_offset_mm) : z,
@@ -749,6 +938,11 @@ export class Ex60Scene {
         if (panel.name === 'front_side' || panel.name === 'rear_side') {
           material.opacity = val(visual.inspection_transparency).door_opacity;
         }
+        if (['panoramic_roof', 'front_side', 'rear_side'].includes(panel.name)) {
+          this._inspectionMaterial(material, panel.name === 'panoramic_roof'
+            ? visual.glazing_material.opacity : val(visual.inspection_transparency).door_opacity);
+        }
+        material.forceSinglePass = true;
         const windscreen = panel.name === 'windshield' ? val(visual.reference_remodel).windscreen : null;
         const rows = windscreen ? windscreen.rows : val(d.glass_rows);
         const columns = windscreen ? windscreen.columns : val(d.glass_rows);
@@ -766,6 +960,22 @@ export class Ex60Scene {
           }) : material);
         mesh.name = `${panel.name}_${sign}`;
         glazing.add(mesh);
+        if (panel.mirror_y || panel.name === 'rear_window') {
+          const opening = val(visual.openings);
+          const trim = new THREE.Group();
+          trim.name = `${panel.name}_glazing_trim_${sign}`;
+          for (let edge = 0; edge < 4; edge++) {
+            const seal = gridSurface(samples, 1, (u, t) => {
+              const inset = t * val(opening.glazing_seal_fraction);
+              const along = inset + u * (1 - 2 * inset);
+              const coordinates = [[along, inset], [1 - inset, along], [1 - along, 1 - inset], [inset, 1 - along]][edge];
+              return surface(...coordinates).addScaledVector(normal, val(opening.glazing_seal_offset_mm)).toArray();
+            }, MAT.housing);
+            seal.name = `${panel.name}_seal_${sign}_${edge}`;
+            trim.add(seal);
+          }
+          glazing.add(trim);
+        }
         if (windscreen) {
           const trim = new THREE.MeshStandardMaterial({ ...windscreen.surround_material, side: THREE.DoubleSide });
           for (let edge = 0; edge < 4; edge++) {
@@ -785,7 +995,7 @@ export class Ex60Scene {
     for (const stroke of visual.strokes) {
       if (val(visual.exterior_refinement).replaced_strokes.includes(stroke.name)) continue;
       for (const sign of stroke.mirror_y ? [1, -1] : [1]) {
-        const points = stroke.points.map(([x, y, z]) => V([x, sign * y, z]));
+        const points = stroke.points.map(([x, y, z]) => V([x, stroke.mirror_y ? sign * Math.abs(y) : y, z]));
         const path = new THREE.CurvePath();
         for (let i = 1; i < points.length; i++) path.add(new THREE.LineCurve3(points[i - 1], points[i]));
         const mesh = new THREE.Mesh(new THREE.TubeGeometry(path, points.length * 4, val(stroke.radius), 8, false), MAT[stroke.material]);
@@ -924,6 +1134,35 @@ export class Ex60Scene {
     const floor = box(2600, 1600, 20, MAT.floor);
     floor.position.set(1500, 0, floorZ - 10);
     g.add(floor);
+
+    const cargo = val(sp.visual_reconstruction.openings).cargo_liner;
+    const lining = new THREE.MeshStandardMaterial({ ...cargo.material, side: THREE.DoubleSide });
+    const cargoFloorZ = (x) => THREE.MathUtils.lerp(val(cargo.floor_z_mm), val(cargo.loading_lip_z_mm),
+      (x - cargo.x_mm[0]) / (cargo.x_mm[1] - cargo.x_mm[0]));
+    const cargoFloor = gridSurface(cargo.x_mm, 1, (x, t) =>
+      [x, (2 * t - 1) * val(cargo.half_width_mm), cargoFloorZ(x)], lining);
+    cargoFloor.name = 'cargo_floor';
+    g.add(cargoFloor);
+    const wheelX = val(sp.vehicle.wheelbase), radius = val(sp.vehicle.wheel_diameter) / 2;
+    const arch = sp.visual_reconstruction.wheel_arch;
+    const archRadius = radius * val(arch.radius_ratio), centerZ = radius * val(arch.center_z_ratio);
+    const clearance = val(cargo.wheelhouse_clearance_mm);
+    const steps = val(sp.visual_reconstruction.exterior_refinement).side_rows;
+    const samples = Array.from({ length: steps + 1 }, (_, i) => i / steps);
+    const start = Math.max(cargo.x_mm[0], wheelX - archRadius);
+    const end = Math.min(cargo.x_mm[1], wheelX + archRadius);
+    const coverXs = samples.map((t) => start + (end - start) * t);
+    const coverZ = (x) => Math.max(cargoFloorZ(x), centerZ + Math.sqrt(Math.max(0, archRadius ** 2 - (x - wheelX) ** 2)));
+    for (const side of [-1, 1]) {
+      const innerY = val(sp.vehicle.track_rear) / 2 - val(sp.vehicle.tyre_width) / 2 - clearance;
+      const outerY = val(sp.vehicle.width_excl_mirrors) / 2 - val(sp.visual_reconstruction.body_side_inset_mm);
+      const cover = gridSurface(coverXs, 2, (x, t) => [x, side * (innerY + (outerY - innerY) * t), coverZ(x)], lining);
+      cover.name = `cargo_wheelhouse_top_${side}`;
+      const wall = gridSurface(coverXs, 2, (x, t) => [x, side * innerY,
+        cargoFloorZ(x) + (coverZ(x) - cargoFloorZ(x)) * t], lining);
+      wall.name = `cargo_wheelhouse_inner_${side}`;
+      g.add(cover, wall);
+    }
 
     this._buildDashboard();
 
@@ -1319,11 +1558,12 @@ export class Ex60Scene {
   }
 
   _buildMirrors() {
-    const g = this.layer('mirrors');
+    const layer = this.layer('mirrors');
     const detail = val(this.spec.visual_reconstruction.mirror_detail);
     const capMaterial = new THREE.MeshStandardMaterial(detail.cap_material);
     this.mirrors = {};
     for (const k of K.MIRRORS) {
+      const g = k === 'interior' ? layer : this._openingParent(layer, `front_${k}`);
       const m = this.spec.mirrors[k], c = [m.glass_center.x, m.glass_center.y, m.glass_center.z];
       const d = detail[k === 'interior' ? 'interior' : 'exterior'];
       const grp = new THREE.Group();

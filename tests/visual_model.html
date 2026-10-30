@@ -104,7 +104,7 @@ try {
     }
   }
   for (const side of [-1, 1]) {
-    const panel = car.root.getObjectByName(`painted_side_panel_${side}`);
+    const panel = car.root.getObjectByName(`painted_side_panel_${side}_1`);
     const vertices = panel.geometry.getAttribute('position'), stride = refinement.side_rows + 1;
     if (vertices.count >= panel.geometry.index.count / 2) throw new Error('Side normals are no longer shared.');
     const edgeMap = new Map();
@@ -117,12 +117,13 @@ try {
         throw new Error('Hood/shoulder seam is open.');
       }
     }
+    const doorVertices = car.root.getObjectByName(`front_${side < 0 ? 'left' : 'right'}_skin`).geometry.getAttribute('position');
     let lowerDoorSculpt = 0;
-    for (let i = 0; i < vertices.count; i += stride) {
-      if (vertices.getX(i) < 1200 || vertices.getX(i) > 2000) continue;
-      const topWidth = Math.abs(vertices.getY(i + stride - 1));
+    for (let i = 0; i < doorVertices.count; i += stride) {
+      if (doorVertices.getX(i) < 1200 || doorVertices.getX(i) > 2000) continue;
+      const topWidth = Math.abs(doorVertices.getY(i + stride - 1));
       for (let row = 1; row < stride - 1; row++) {
-        lowerDoorSculpt = Math.max(lowerDoorSculpt, topWidth - Math.abs(vertices.getY(i + row)));
+        lowerDoorSculpt = Math.max(lowerDoorSculpt, topWidth - Math.abs(doorVertices.getY(i + row)));
       }
     }
     if (lowerDoorSculpt < 25) throw new Error('Lower door concavity regressed.');
@@ -140,14 +141,15 @@ try {
   }
   const inspection = spec.visual_reconstruction.inspection_transparency.value;
   for (const side of [-1, 1]) {
-    const panel = car.root.getObjectByName(`painted_side_panel_${side}`);
-    const door = panel.material[1];
-    if (!door.transparent || door.depthWrite || door.opacity !== inspection.door_opacity) {
-      throw new Error('Door transparency is not applied.');
+    for (const end of ['front', 'rear']) {
+      const panel = car.root.getObjectByName(`${end}_${side < 0 ? 'left' : 'right'}_skin`);
+      const door = panel.material;
+      if (!door.transparent || door.depthWrite || door.opacity !== inspection.door_opacity) {
+        throw new Error('Door transparency is not applied.');
+      }
     }
-    if (!panel.geometry.groups.some((group) => group.materialIndex === 1) ||
-        !panel.geometry.groups.some((group) => group.materialIndex === 0)) {
-      throw new Error('Transparent doors must retain opaque fenders.');
+    if (car.root.getObjectByName(`painted_side_panel_${side}_1`).material.transparent) {
+      throw new Error('Fenders must remain opaque.');
     }
   }
   car.layers.body_roof.traverse((object) => {
@@ -367,6 +369,10 @@ try {
   const steeringView = new URLSearchParams(location.search).has('steering');
   const details = new URLSearchParams(location.search).has('details');
   const view = new URLSearchParams(location.search).get('view');
+  if (new URLSearchParams(location.search).has('opaque')) car.setInspectionTransparency(false);
+  if (new URLSearchParams(location.search).has('open')) {
+    for (const id of Object.keys(car.openings)) car.setOpening(id, true);
+  }
   for (const name of ['r46_zones', 'sightlines', 'eyellipse', 'markers', 'manikin']) {
     car.layers[name].visible = false;
   }

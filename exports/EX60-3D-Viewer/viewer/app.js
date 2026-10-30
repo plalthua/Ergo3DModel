@@ -33,6 +33,8 @@ scene.add(grid);
 
 const car = new Ex60Scene(spec);
 scene.add(car.root);
+car.setInspectionTransparency($('inspectionTransparency').checked);
+$('inspectionTransparency').onchange = () => car.setInspectionTransparency($('inspectionTransparency').checked);
 
 const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
 const controls = new OrbitControls(camera, canvas);
@@ -204,6 +206,38 @@ $('autoMirrors').onclick = () => {
 };
 $('resetDesign').onclick = () => { state = K.designState(spec); $('followLog').checked = false; refresh(); };
 
+// --------------------------------------------------------- opening panels
+const openingButtons = new Map();
+for (const [id, opening] of Object.entries(car.openings)) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.onclick = () => {
+    car.setOpening(id, !opening.open);
+    syncOpenings();
+  };
+  openingButtons.set(id, button);
+  $('openingControls').appendChild(button);
+}
+function syncOpenings() {
+  const openLabels = [];
+  for (const [id, opening] of Object.entries(car.openings)) {
+    const button = openingButtons.get(id);
+    button.textContent = `${opening.open ? 'Close' : 'Open'} ${opening.label.toLowerCase()}`;
+    button.setAttribute('aria-label', `${opening.label}: ${opening.open ? 'open; close' : 'closed; open'}`);
+    if (opening.open) openLabels.push(opening.label);
+  }
+  $('openingStatus').textContent = openLabels.length ? `Open: ${openLabels.join(', ')}.` : 'All doors and tailgate closed.';
+  car.layers.sightlines.visible = !car.hasOpenPanels && sightlinesToggle.checked;
+  if (car.hasOpenPanels) $('pipLabels').replaceChildren();
+  refresh();
+}
+for (const [id, open] of [['openAllDoors', true], ['closeAllDoors', false]]) {
+  $(id).onclick = () => {
+    for (const key of Object.keys(car.openings)) car.setOpening(key, open);
+    syncOpenings();
+  };
+}
+
 // ---------------------------------------------------------------- toggles
 const layerLabels = {
   body: 'painted body',
@@ -214,13 +248,15 @@ const layerLabels = {
   cabin_seating: 'passenger and rear bench (static visual estimates)',
   r46_zones: 'R46 ground zones',
 };
+let sightlinesToggle;
 for (const name of Object.keys(car.layers)) {
   const l = document.createElement('label');
   l.className = 'chk';
   l.innerHTML = `<input type="checkbox" ${name === 'eyellipse' ? '' : 'checked'}> ${layerLabels[name] || name}`;
   const cb = l.querySelector('input');
   car.layers[name].visible = cb.checked;
-  cb.onchange = () => { car.layers[name].visible = cb.checked; };
+  if (name === 'sightlines') sightlinesToggle = cb;
+  cb.onchange = () => { car.layers[name].visible = cb.checked && (name !== 'sightlines' || !car.hasOpenPanels); };
   $('toggles').appendChild(l);
 }
 document.querySelectorAll('#cams button').forEach((b) => (b.onclick = () => setCam(b.dataset.cam)));
@@ -300,6 +336,7 @@ $('exportPng').onclick = () => canvas.toBlob((b) => download(b, `ex60_ergo_${man
 $('exportPose').onclick = () => {
   const r = car.update(state, manikin);
   const pose = { vehicle: spec.meta.model, manikin, time_s: timeline ? tlTime : null, adjustments: state,
+    visual_openings: Object.fromEntries(Object.entries(car.openings).map(([id, opening]) => [id, opening.open])),
     driver_profile: structuredClone(spec.manikins[manikin]),
     h_point: r.H, eye_point: r.eye, wheel_center: r.wc, metrics: r.metrics, flags: r.flags };
   download(new Blob([JSON.stringify(pose, null, 2)], { type: 'application/json' }), `ex60_pose_${manikin}${stamp()}.json`);
@@ -321,7 +358,7 @@ function showMetrics(m, f) {
     const cls = flag ? (f[flag] ? 'bad' : 'ok') : '';
     return `<tr class="${cls}"><td>${label}</td><td class="v">${Number.isFinite(m[k]) ? m[k].toFixed(1) : '–'} ${u}</td></tr>`;
   }).join('');
-  $('metrics').innerHTML = `<div class="title">Ergo metrics · ${spec.manikins[manikin].label}</div><table>${rows}</table>`;
+  $('metrics').innerHTML = `<div class="title">Ergo metrics · ${spec.manikins[manikin].label}</div>${car.hasOpenPanels ? '<div class="muted">Closed-vehicle metrics (visual panels are open).</div>' : ''}<table>${rows}</table>`;
 }
 
 function refresh() {
@@ -352,6 +389,7 @@ function renderMirrorInsets(w, h) {
   const order = ['left', 'interior', 'right'];
   const pw = Math.min(260, w / 3.6), gap = 12;
   const x0 = (w - (pw * 3 + gap * 2)) / 2;
+  const sightlinesVisible = car.layers.sightlines.visible;
   car.layers.sightlines.visible = false;
   const mirrorsVisible = car.layers.mirrors.visible;
   car.layers.mirrors.visible = false; // the virtual camera sits behind the glass
@@ -373,7 +411,7 @@ function renderMirrorInsets(w, h) {
     renderer.render(scene, mirrorCam);
     labels.push(`<div style="left:${x + 4}px;bottom:${y + ph - 18}px">${k} mirror</div>`);
   });
-  car.layers.sightlines.visible = true;
+  car.layers.sightlines.visible = sightlinesVisible;
   car.layers.mirrors.visible = mirrorsVisible;
   $('pipLabels').innerHTML = labels.join('');
 }
@@ -393,7 +431,7 @@ function frame(now) {
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, w, h);
   renderer.render(scene, camera);
-  if ($('mirrorPip').checked) {
+  if ($('mirrorPip').checked && !car.hasOpenPanels) {
     renderer.setScissorTest(true);
     renderMirrorInsets(w, h);
     renderer.setScissorTest(false);
@@ -428,7 +466,7 @@ function applyLayoutMode() {
 }
 compactQuery.addEventListener('change', applyLayoutMode);
 applyLayoutMode();
-refresh();
+syncOpenings();
 setCam('iso');
 requestAnimationFrame(frame);
 window.ergo = { spec, car, K, camera, controls, setCam, get manikin() { return manikin; }, get state() { return state; }, get timeline() { return timeline; } };

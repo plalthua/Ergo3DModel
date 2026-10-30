@@ -53,6 +53,17 @@
     </section>
 
     <section>
+      <h2>Doors and tailgate</h2>
+      <div class="row wrap" id="openingControls" role="group" aria-label="Doors and tailgate"></div>
+      <div class="row">
+        <button type="button" id="openAllDoors">Open all</button>
+        <button type="button" id="closeAllDoors">Close all</button>
+      </div>
+      <div id="openingStatus" class="muted" aria-live="polite"></div>
+      <p class="muted">Visual estimates only, independent of log replay. Mirror views and sightlines are hidden while any panel is open; metrics describe the closed vehicle.</p>
+    </section>
+
+    <section>
       <h2>Adjustments</h2>
       <div id="sliders"></div>
     </section>
@@ -64,6 +75,7 @@
         <button data-cam="front">Front</button><button data-cam="eye">Driver eye</button>
       </div>
       <div class="row wrap" id="toggles"></div>
+      <label class="chk"><input type="checkbox" id="inspectionTransparency" /> Cabin inspection transparency</label>
       <label class="chk"><input type="checkbox" id="mirrorPip" checked /> Mirror views (unmirrored)</label>
     </section>
 

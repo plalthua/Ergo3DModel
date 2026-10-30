@@ -106,8 +106,28 @@ pixel ratio is capped at 2.
 No external upload, hosting deployment or live web link has been created.
 
 ## Viewer
+- **Doors and tailgate**: individual open/close buttons for all four doors and the tailgate/trunk,
+  plus **Open all** and **Close all**. Windows, door handles and front-door mirrors move with
+  their panels; the rear bumper stays fixed. Hinges, panel boundaries and opening angles are
+  illustrative **estimates**, not Volvo measurements or a clearance/safety analysis.
+  Each door now has a single curved glazing seal on the correct side and a finished panel
+  edge, rather than detached tubular frames/seam outlines. The tailgate is a central hatch
+  with side rails around its rear glass; the rear corner panels and shoulder strips remain
+  fixed instead of lifting a full-width duplicate rear shell. The opening angle and all new
+  edge/seal dimensions remain estimates guided visually by local side/rear gallery images.
+  An estimated fixed cargo floor and wheelhouse lining close the view through to the ground
+  and tires when the hatch is raised; they are visual context, not measured cargo capacity.
+  Opening states are independent of log replay and design-position adjustments. Mirror insets
+  and sightlines are hidden while any panel is open; ergonomic metrics still describe the
+  closed vehicle. Screenshots capture the current panel pose, and Pose JSON records
+  `visual_openings` separately from canonical logged adjustments.
+  To run the browser integration check, serve the project and open
+  [tests/openings.html](tests/openings.html). It checks all five buttons, hinge transforms,
+  closing recovery, moving accessories, fixed-panel apertures and unchanged metrics.
+  Add `?target=standalone`, `?target=desktop` or `?target=teams` to check a rebuilt
+  package, and `&mobile` for the compact controls layout.
 - Sliders for every adjustment, a manikin selector, **Auto-adjust mirrors** (solves yaw/pitch for the target view) and **Design position**.
-- **Refined visual context**: painted exterior panels with wheel-arch openings, separate glazing, roof, lamps and trim; layered dashboard fascia, recessed vents, a raised circular speaker, generic screens, center console and steering-wheel controls. Doors and their windows are translucent (18% opacity), as are the roof, pillars and panoramic glass (16%), for cabin inspection; these are visualization settings, not real panel properties. Hood and fenders remain opaque. Use the **roof (toggle for cutaway)** layer to expose the cabin from above; glazing, cabin details and exterior trim can also be toggled independently.
+- **Refined visual context**: painted exterior panels with wheel-arch openings, separate glazing, roof, lamps and trim; layered dashboard fascia, recessed vents, a raised circular speaker, generic screens, center console and steering-wheel controls. All four side-door skins and their windows are **60% transparent (40% opacity)** by default, both open and closed. Enable **Cabin inspection transparency** under **View** to also make the roof/pillars translucent (16% opacity); side-door transparency stays at 60% in either mode. These are visualization settings, not real panel properties. Hood, fenders and tailgate remain opaque. Use the **roof (toggle for cutaway)** layer to expose the cabin from above; glazing, cabin details and exterior trim can also be toggled independently.
 - **Seat and mirror detail**: rounded, tapered cushion/backrest, layered bolsters, shoulder panels,
   concealed headrest support, upholstery seams and lower shell; sculpted exterior mirror caps,
   shaped glass/rims, black mounting arms/trim and a rounded interior rearview housing. All detail
@@ -233,7 +253,7 @@ source IDs for the two images:
   supported headrests, belt buckles and a stowed center armrest. These are static
   visual estimates, not passenger CAN channels or validated passenger H-points.
 - Driver adjustment/replay frames, Seat Length, steering and mirror refinements are
-  retained. Doors remain 18% opaque and roof panels 16% opaque for inspection.
+  retained. Doors are 40% opaque (60% transparent) and roof panels 16% opaque for inspection.
 
 The source and packaged Python/JS now share `above_rim` and legacy `through_wheel`
 DIM clearance routes (unknown routes fail explicitly). DIM center is intentionally
