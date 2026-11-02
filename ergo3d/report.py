@@ -32,6 +32,8 @@ def summarize(spec: dict, timeline: dict, rows: List[Dict[str, float]], manikin:
     mid_adj = Adjustments.from_channels(spec, frame_values(timeline, mid))
     num = lambda k: [r[k] for r in rows if isinstance(r[k], (int, float)) and not math.isnan(r[k])]
     return {
+        "geometry_profile": spec["meta"].get("geometry_profile", "parametric"),
+        "geometry_confidence": "estimate",
         "manikin": manikin,
         "frames": len(rows),
         "duration_s": round(len(rows) * dt, 2),

@@ -43,18 +43,106 @@ The source viewer now defaults to the complete supplied car in
 `?model=parametric` also selects them on startup. **Open local GLB** replaces the
 visual with a file selected on this PC. Inspection transparency works on either model.
 
-The supplied GLB is **static**: seat, steering, mirrors and door pivots have not been
-validated or connected to replay. Replay still computes the original parametric
-metrics, not measurements from the imported vehicle. Numeric results are unchanged
-for every body profile. Manikin/sightline overlays start hidden in GLB mode and,
-if explicitly enabled, remain uncalibrated estimates. Units and axle/ground alignment
-are estimates requiring CAD or physical verification; the file does not establish
-EX60 identity or official ergonomic dimensions.
+The supplied GLB now has **geometry-derived estimated articulation**:
+
+- All four doors carry their exterior panels, glazing and interior trim. Each front
+  door also carries its exterior mirror glass, housing, mount, indicator and mounting trim.
+- The tailgate carries its interior/exterior, glazing, upper spoiler and glazing blackoff.
+- **Frunk / bonnet** opens the complete supplied `Bonnet` assembly about an estimated
+  rear hinge. The parametric model opens its hood and attached shutlines too. Both support
+  individual open/close and Open all/Close all; closing restores the original geometry.
+  The 65-degree opening, hinge and clearances are estimates, not factory kinematics.
+  No measured frunk tub, struts, latch or usable storage capacity is inferred.
+- Driver-seat slide/height, cushion tilt and backrest recline follow the controls and
+  replay. The headrest follows the backrest; fixed cabin trim and the other seats stay fixed.
+- Steering spin, tilt and telescope follow the controls and replay. Spin separates the
+  wheel from stationary stalk/column islands; tilt/telescope move the column assembly.
+- Exterior mirror adjustment moves glass only, not the housing. The interior mirror
+  glass and housing move together. Mirror folding and belt-webbing deformation are not simulated.
+
+The original GLB is unchanged: complete connected mesh islands are separated at runtime,
+with vertex attributes, textures and triangles preserved. Pivot coordinates, island
+bindings and hardpoint overrides live in [data/ex60_spec.json](data/ex60_spec.json).
+Native material grouping is not a mechanical CAD hierarchy. Hinges, seat mechanisms,
+column telescope (a rigid visual approximation) and mirror pivots are **estimates**,
+not factory kinematics; opening/adjustment clearances have not been certified.
+
+The matching GLB selects the `local_glb` ergonomic profile. Wheel, glass and display
+centres are aligned with transformed mesh geometry, and the human H-point is an assumed
+hip centre above the visible cushion. The model displays the human and reference markers
+with side-door inspection transparency initially enabled (40% opacity). Only the four
+side-door panels, interior trim and windows are affected; roof, body, tailgate, mirrors
+and cabin retain their original materials. Turn transparency off to inspect the finish.
+Seat/steering motion, human eyes/hands, sightlines, mirror cameras, numeric metrics and pose
+exports use the same active profile. Opening any panel disables mirror views and sightlines;
+metrics remain explicitly for the closed vehicle. Auto-adjust mirrors solves the existing
+planar optical target, not a measured road-visibility certification.
+**R46 ground zones** and **Mirror views (unmirrored)** start checked, including compact
+layouts. Thin green eye-to-glass sightlines continue along the reflected direction to
+the ground-zone plane (up to 100 m), following driver/mirror adjustments. Upward rays
+retain their true direction rather than being bent toward a zone. Short reference dots
+and red display/flag lines are removed; numeric ergonomic flags remain unchanged.
+Use **mirror sightlines to ground** under **View** to toggle the lines. These are estimated
+centre rays, not field-of-view boundaries or regulatory certification.
+A larger 24 x 16 m horizontal ground surface surrounds the vehicle, with an independent
+View toggle. Separate left/right rear-reference surfaces and labels are not displayed.
+
+**This is not validated ergonomic calibration.** H-point, pedal heel point, inner-roof
+clearance plane, adjustment limits, circular steering-grip/visibility approximation and
+all nine human profiles still need CAD, physical measurements and validated anthropometry.
+Curved mirror glass uses an area-averaged planar normal. The actual GLB DIM replaces the
+previous photo-estimated placement and uses through-wheel visibility. Do not interpret
+negative visibility margins or mirror flags as proof that the real vehicle is unsafe.
+The file alone does not establish identity, scale accuracy or official Volvo dimensions.
+
+Switching to the parametric model restores its original hardpoints and metrics. Untouched
+design-valued channels adopt the selected profile's design values; manually changed/logged
+values are retained. Unrecognized GLBs stay static, retain clearly labelled parametric
+metrics, and have alignment overlays and articulation controls disabled.
+
+CLI metrics and reports support the same explicit profile (default stays `parametric`):
+```powershell
+uv run --no-project python -m ergo3d design --geometry local_glb
+uv run --no-project python -m ergo3d report data/timelines/sample_timeline.json --geometry local_glb --manikin p50_male
+```
+Pose/report summaries label the profile and estimate confidence. Default local-GLB report
+names end in `_local_glb`, keeping the original parametric reports separate. Real session
+data stays local.
+
+### Geometry-profile validation snapshot
+
+Design-position changes versus the original parametric estimates, in mm:
+
+| Human profile | H-point to wheel | Headroom | DIM visibility margin |
+|---|---:|---:|---:|
+| 5th pct female | -1.56 | -15.00 | -2.25 |
+| 50th pct male | -1.56 | -15.00 | -53.64 |
+| 95th pct male | -1.56 | -15.00 | -93.78 |
+| Medium adult female | -1.56 | -15.00 | -28.56 |
+| Slim adult | -1.56 | -15.00 | -53.64 |
+| Broad-shouldered adult | -1.56 | -15.00 | -53.64 |
+| Larger-body adult | -1.56 | -15.00 | -53.64 |
+| Small teen | -1.56 | -15.00 | +16.35 |
+| Tall teen | -1.56 | -15.00 | -33.85 |
+
+These are changes between **two estimate profiles**, not measured accuracy improvements.
+All nine profiles have at least one flag in all 601 frames of the synthetic demo timeline
+(indices 0-600, 0-60 s). The demo includes deliberately changing adjustment values;
+it is not a real vehicle test. Flags are retained, not tuned away. Python and browser
+metrics and flagged-frame indices agree across every profile.
 
 The private GLB stays local and is excluded from all HTML/ZIP sharing packages.
 Portable viewers default to the parametric model; authorized users can select their
-own local GLB without uploading it. GLB redistribution/export and unbound door/mirror
-controls are disabled while the imported vehicle is displayed.
+own local GLB without uploading it. GLB redistribution/export remains disabled while
+the imported vehicle is displayed. Existing shared HTML/ZIP packages are not rebuilt.
+
+Local regression: serve the project and open [tests/imported_car.html](tests/imported_car.html) in a browser.
+It requires the private GLB and checks every rest vertex/attribute and triangle, all
+openings and mirror attachments, all 13 adjustment channels, human/wheel anchors,
+actual mirror-glass normals, control gating, mode switching, material restoration and
+all 601 replay frames across nine human profiles. Add `?open` for an opaque open-vehicle
+inspection. The Python suite checks profile isolation, hardpoint transforms, ranges and
+report provenance. Parametric opening and visual regression pages remain applicable.
 
 ## OneDrive sharing package
 **Simplest option: share just [EX60-3D-Viewer.html](exports/EX60-3D-Viewer.html)** (~1.5 MB).
@@ -126,7 +214,7 @@ pixel ratio is capped at 2.
 No external upload, hosting deployment or live web link has been created.
 
 ## Viewer
-- **Doors and tailgate**: individual open/close buttons for all four doors and the tailgate/trunk,
+- **Doors, tailgate and frunk**: individual open/close buttons for all four doors, tailgate/trunk and frunk/bonnet,
   plus **Open all** and **Close all**. Windows, door handles and front-door mirrors move with
   their panels; the rear bumper stays fixed. Hinges, panel boundaries and opening angles are
   illustrative **estimates**, not Volvo measurements or a clearance/safety analysis.
@@ -142,7 +230,7 @@ No external upload, hosting deployment or live web link has been created.
   closed vehicle. Screenshots capture the current panel pose, and Pose JSON records
   `visual_openings` separately from canonical logged adjustments.
   To run the browser integration check, serve the project and open
-  [tests/openings.html](tests/openings.html). It checks all five buttons, hinge transforms,
+  [tests/openings.html](tests/openings.html). It checks all six buttons, hinge transforms,
   closing recovery, moving accessories, fixed-panel apertures and unchanged metrics.
   Add `?target=standalone`, `?target=desktop` or `?target=teams` to check a rebuilt
   package, and `&mobile` for the compact controls layout.

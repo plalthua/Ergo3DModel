@@ -1628,28 +1628,32 @@ export class Ex60Scene {
 
   _buildSightlines() {
     const g = this.layer('sightlines');
+    const referenceSpec = val(this.spec.mirror_view_reference);
+    const ground = referenceSpec.ground;
+    const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(ground.length_mm, ground.width_mm),
+      new THREE.MeshBasicMaterial({ color: ground.color, side: THREE.DoubleSide }));
+    groundMesh.name = 'external_reference_ground';
+    groundMesh.position.copy(V(ground.center_mm));
+    this.layer('reference_ground').add(groundMesh);
     this.lines = {};
     const mk = (name, color) => {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(9), 3));
-      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color }));
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, linewidth: 1 }));
       line.frustumCulled = false;
       g.add(line);
       this.lines[name] = line;
     };
     for (const k of K.MIRRORS) mk(k, 0x33dd77);
-    mk('cluster_top', 0xffcc00);
-    mk('cluster_bottom', 0xffcc00);
   }
 
-  _setLine(name, pts, ok) {
+  _setLine(name, pts) {
     const line = this.lines[name], arr = line.geometry.attributes.position.array;
     for (let i = 0; i < 3; i++) {
       const p = pts[Math.min(i, pts.length - 1)];
       arr.set(p, i * 3);
     }
     line.geometry.attributes.position.needsUpdate = true;
-    line.material.color.set(ok ? (name.startsWith('cluster') ? 0xffcc00 : 0x33dd77) : 0xff3355);
   }
 
   // ----------------------------------------------------------------- update
@@ -1680,6 +1684,8 @@ export class Ex60Scene {
 
     // Mirrors
     for (const k of K.MIRRORS) {
+      const center = sp.mirrors[k].glass_center;
+      this.mirrors[k].center = [center.x, center.y, center.z];
       const n = K.mirrorNormal(...K.mirrorAngles(a, k));
       setBasis(this.mirrors[k].group, ...basisFromNormal(n));
     }
@@ -1748,11 +1754,12 @@ export class Ex60Scene {
     for (const k of K.MIRRORS) {
       const c = this.mirrors[k].center;
       const r = K.mirrorReflectedDir(sp, a, manikin, k);
-      this._setLine(k, [eye, c, K.add(c, K.scale(r, 3000))], !flags[`mirror_${k}_view`]);
+      const maxDistance = val(sp.mirror_view_reference).max_distance_mm;
+      const groundDistance = r[2] < 0 ? (this.r46[0].position.z - c[2]) / r[2] : Infinity;
+      // Preserve the reflected direction; upward rays cannot intersect the ground.
+      const distance = groundDistance > 0 ? Math.min(groundDistance, maxDistance) : maxDistance;
+      this._setLine(k, [eye, c, K.add(c, K.scale(r, distance))]);
     }
-    const [top, bottom] = K.driverDisplayEdges(sp);
-    this._setLine('cluster_top', [eye, top], !flags.cluster_visibility);
-    this._setLine('cluster_bottom', [eye, bottom], !flags.cluster_visibility);
     return { metrics, flags, eye, H, wc };
   }
 

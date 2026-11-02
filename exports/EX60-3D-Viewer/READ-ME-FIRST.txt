@@ -47,7 +47,8 @@ MOBILE AND PHONE BROWSERS
   <= 520 px) the controls become a drawer opened by the "Show controls"
   button, the metrics and driver body profile menus are collapsed by
   default, and the 3D scene fills the screen. One finger orbits; two
-  fingers pinch-zoom and pan. Mirror insets start switched off on phones.
+  fingers pinch-zoom and pan. Mirror insets and R46 ground zones start
+  enabled on phones too; turn mirror insets off if rendering is slow.
 - TESTED: Chrome 3D emulation of 390x844, 360x740 and 844x390 touch
   viewports (plus 1440x1000 desktop) using the generated HTML. NOT tested
   on physical iOS/Safari or Android devices; real-device WebGL speed and
@@ -62,6 +63,10 @@ MOBILE AND PHONE BROWSERS
   guest members, and must remove users when membership changes. The page
   has no client-side login and must not be treated as access control.
 FEATURES
+- Four doors, tailgate and frunk/bonnet lid open and close individually
+  or together. Hinges and opening angles are estimates, not factory data.
+- The private supplied GLB is not included. Select your own local copy
+  with "Open local GLB" to use its estimated articulation.
 - Seat, steering wheel/column, mirrors and seated driver in 3D.
 - Nine selectable driver body profiles, including two teenage examples.
 - Adjustable body size, shoulder breadth, hip spacing, torso depth and girth.

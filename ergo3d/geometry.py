@@ -8,12 +8,29 @@ axle, +Y to the right, +Z up from the ground. Keep this module in sync with
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 
 Vec = Tuple[float, float, float]
 
 MIRRORS = ("left", "right", "interior")
+
+def geometry_profile(spec: dict, name: str = "parametric") -> dict:
+    """Select explicit estimated hardpoints without mutating the baseline spec."""
+    if name not in ("parametric", "local_glb"):
+        raise ValueError(f"Unknown geometry profile: {name}")
+    result = deepcopy(spec)
+    if name == "local_glb":
+        def merge(target, changes):
+            for key, value in changes.items():
+                if isinstance(value, dict) and isinstance(target.get(key), dict):
+                    merge(target[key], value)
+                else:
+                    target[key] = deepcopy(value)
+        merge(result, spec["imported_vehicle"]["value"]["ergonomics"]["overrides"])
+    result["meta"]["geometry_profile"] = name
+    return result
 
 
 def add(a: Vec, b: Vec) -> Vec:

@@ -63,8 +63,8 @@
     </section>
 
     <section>
-      <h2>Doors and tailgate</h2>
-      <div class="row wrap" id="openingControls" role="group" aria-label="Doors and tailgate"></div>
+      <h2>Doors, tailgate and frunk</h2>
+      <div class="row wrap" id="openingControls" role="group" aria-label="Doors, tailgate and frunk"></div>
       <div class="row">
         <button type="button" id="openAllDoors">Open all</button>
         <button type="button" id="closeAllDoors">Close all</button>
@@ -82,18 +82,18 @@
       <h2>View</h2>
       <label for="vehicleVisual">Car model</label>
       <select id="vehicleVisual">
-        <option value="glb">Supplied GLB (static geometry)</option>
+        <option value="glb">Supplied GLB (estimated articulation + human alignment)</option>
         <option value="parametric">Parametric estimates (replay articulation)</option>
       </select>
       <p id="vehicleVisualStatus" class="muted" role="status" aria-live="polite"></p>
       <label class="file">Open local GLB...<input type="file" id="vehicleGlbFile" accept=".glb" /></label>
-      <p class="muted">GLB alignment is estimated. Seat, steering, mirrors and opening panels are static in GLB mode. Metrics and optional occupant overlays still use the parametric spec, not GLB measurements.</p>
+      <p class="muted">Matching supplied GLB: all doors, tailgate, frunk lid, door-mounted mirrors, driver seat and steering articulate. Human, sightlines and metrics use a geometry-derived estimate profile. H-point, pedal, roof, mechanisms, ranges and human dimensions still need physical/CAD validation. Open panels disable mirror views and sightlines; metrics remain closed-vehicle estimates.</p>
       <div class="row wrap" id="cams">
         <button data-cam="iso">Iso</button><button data-cam="side">Side</button><button data-cam="top">Top</button>
         <button data-cam="front">Front</button><button data-cam="eye">Driver eye</button>
       </div>
       <div class="row wrap" id="toggles"></div>
-      <label class="chk"><input type="checkbox" id="inspectionTransparency" /> Cabin inspection transparency</label>
+      <label class="chk"><input type="checkbox" id="inspectionTransparency" /> <span id="inspectionTransparencyLabel">Cabin inspection transparency</span></label>
       <label class="chk"><input type="checkbox" id="mirrorPip" checked /> Mirror views (unmirrored)</label>
     </section>
 

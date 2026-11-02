@@ -9,7 +9,11 @@ const SPEC_URL = '../data/ex60_spec.json';
 const SAMPLE_URL = '../data/timelines/sample_timeline.json';
 const $ = (id) => document.getElementById(id);
 
-const spec = await (await fetch(SPEC_URL)).json();
+const baselineSpec = await (await fetch(SPEC_URL)).json();
+let spec = K.geometryProfile(baselineSpec);
+const glbSpec = K.geometryProfile(baselineSpec, 'local_glb');
+glbSpec.manikins = spec.manikins;
+const parametricSpec = spec;
 const bodyPresets = structuredClone(spec.manikins);
 const ranges = K.channelRanges(spec);
 let state = K.designState(spec);
@@ -218,7 +222,8 @@ for (const [id, opening] of Object.entries(car.openings)) {
   const button = document.createElement('button');
   button.type = 'button';
   button.onclick = () => {
-    car.setOpening(id, !opening.open);
+    if (glbMode) importedCar.setOpening(id, !importedCar.openingIsOpen(id));
+    else car.setOpening(id, !opening.open);
     syncOpenings();
   };
   openingButtons.set(id, button);
@@ -228,18 +233,25 @@ function syncOpenings() {
   const openLabels = [];
   for (const [id, opening] of Object.entries(car.openings)) {
     const button = openingButtons.get(id);
-    button.textContent = `${opening.open ? 'Close' : 'Open'} ${opening.label.toLowerCase()}`;
-    button.setAttribute('aria-label', `${opening.label}: ${opening.open ? 'open; close' : 'closed; open'}`);
-    if (opening.open) openLabels.push(opening.label);
+    const open = glbMode ? importedCar.openingIsOpen(id) : opening.open;
+    button.textContent = `${open ? 'Close' : 'Open'} ${opening.label.toLowerCase()}`;
+    button.setAttribute('aria-label', `${opening.label}: ${open ? 'open; close' : 'closed; open'}`);
+    if (open) openLabels.push(opening.label);
   }
-  $('openingStatus').textContent = openLabels.length ? `Open: ${openLabels.join(', ')}.` : 'All doors and tailgate closed.';
-  car.layers.sightlines.visible = !car.hasOpenPanels && sightlinesToggle.checked;
-  if (car.hasOpenPanels) $('pipLabels').replaceChildren();
+  $('openingStatus').textContent = glbMode
+    ? `${importedCar.bindingStatus} ${openLabels.length ? `Open: ${openLabels.join(', ')}.` : 'Panels closed.'}`
+    : openLabels.length ? `Open: ${openLabels.join(', ')}.` : 'All doors, tailgate and frunk closed.';
+  car.layers.sightlines.visible = !car.hasOpenPanels && !openLabels.length && sightlinesToggle.checked;
+  $('mirrorPip').disabled = glbMode && (!importedCar.bindings || importedCar.hasOpenPanels);
+  if (car.hasOpenPanels || glbMode && importedCar.hasOpenPanels) $('pipLabels').replaceChildren();
   refresh();
 }
 for (const [id, open] of [['openAllDoors', true], ['closeAllDoors', false]]) {
   $(id).onclick = () => {
-    for (const key of Object.keys(car.openings)) car.setOpening(key, open);
+    for (const key of Object.keys(car.openings)) {
+      if (glbMode) importedCar.setOpening(key, open);
+      else car.setOpening(key, open);
+    }
     syncOpenings();
   };
 }
@@ -253,6 +265,8 @@ const layerLabels = {
   cabin_details: 'dashboard and console details',
   cabin_seating: 'passenger and rear bench (static visual estimates)',
   r46_zones: 'R46 ground zones',
+  sightlines: 'mirror sightlines to ground',
+  reference_ground: 'large outside ground surface',
 };
 let sightlinesToggle;
 const layerInputs = new Map();
@@ -264,17 +278,31 @@ for (const name of Object.keys(car.layers)) {
   layerInputs.set(name, cb);
   car.layers[name].visible = cb.checked;
   if (name === 'sightlines') sightlinesToggle = cb;
-  cb.onchange = () => { car.layers[name].visible = cb.checked && (name !== 'sightlines' || !car.hasOpenPanels); };
+  cb.onchange = () => { car.layers[name].visible = cb.checked &&
+    (name !== 'sightlines' || !(glbMode ? importedCar.hasOpenPanels : car.hasOpenPanels)); };
   $('toggles').appendChild(l);
 }
 const estimatedCarLayers = Object.keys(car.layers).filter((name) =>
-  !['imported_vehicle', 'manikin', 'markers', 'eyellipse', 'sightlines', 'r46_zones'].includes(name));
+  !['imported_vehicle', 'manikin', 'markers', 'eyellipse', 'sightlines', 'r46_zones',
+    'reference_ground'].includes(name));
 const overlayLayers = ['manikin', 'markers', 'eyellipse', 'sightlines', 'r46_zones'];
 const defaultLocalGlb = !document.getElementById('embedded-spec') &&
   document.querySelector('meta[name="vehicle-default"]')?.content === 'local-glb' &&
   new URLSearchParams(location.search).get('model') !== 'parametric';
 function selectVisual(mode) {
+  const previousDesign = K.designState(spec);
   glbMode = mode === 'glb';
+  $('inspectionTransparencyLabel').textContent = glbMode ? 'Side-door transparency only' : 'Cabin inspection transparency';
+  spec = glbMode && importedCar.bindings ? glbSpec : parametricSpec;
+  car.spec = spec;
+  const design = K.designState(spec);
+  Object.assign(ranges, K.channelRanges(spec));
+  for (const channel of K.CHANNELS) {
+    if (state[channel] === previousDesign[channel]) state[channel] = design[channel];
+    const range = ranges[channel], extra = channel === 'steer_wheel_angle' ? 0 : Math.max(5, (range.max - range.min) * 0.15);
+    sliderEls[channel].input.min = range.min - extra;
+    sliderEls[channel].input.max = range.max + extra;
+  }
   $('vehicleVisual').value = mode;
   for (const name of estimatedCarLayers) {
     car.layers[name].visible = !glbMode && layerInputs.get(name).checked;
@@ -284,25 +312,26 @@ function selectVisual(mode) {
   layerInputs.get('imported_vehicle').checked = car.layers.imported_vehicle.visible;
   layerInputs.get('imported_vehicle').disabled = !glbMode || !importedCar.model;
   for (const name of overlayLayers) {
-    layerInputs.get(name).checked = false;
-    car.layers[name].visible = false;
+    const visible = name === 'r46_zones' ? (!glbMode || !!importedCar.bindings) :
+      glbMode && !!importedCar.bindings && ['manikin', 'markers', 'sightlines'].includes(name);
+    layerInputs.get(name).checked = visible;
+    car.layers[name].visible = visible;
+    layerInputs.get(name).disabled = glbMode && !importedCar.bindings;
   }
   for (const [id, button] of openingButtons) {
     car.setOpening(id, false);
-    button.disabled = glbMode;
+    if (importedCar.supportsOpening(id)) importedCar.setOpening(id, false);
+    button.disabled = glbMode && !importedCar.supportsOpening(id);
   }
-  $('openAllDoors').disabled = $('closeAllDoors').disabled = glbMode;
-  $('mirrorPip').checked = false;
-  $('mirrorPip').disabled = glbMode;
+  $('openAllDoors').disabled = $('closeAllDoors').disabled = glbMode && !importedCar.bindings;
+  $('mirrorPip').checked = !glbMode || !!importedCar.bindings;
+  $('mirrorPip').disabled = glbMode && !importedCar.bindings;
   $('exportGlb').disabled = glbMode;
   $('exportGlb').title = glbMode ? 'Supplied GLB is local-only; redistribution is not enabled.' : '';
   $('pipLabels').replaceChildren();
-  $('openingStatus').textContent = glbMode
-    ? 'GLB panels are static: hinge binding has not been validated.'
-    : 'All doors and tailgate closed.';
   importedCar.inspect(glbMode && $('inspectionTransparency').checked);
   if (!glbMode) car.setInspectionTransparency($('inspectionTransparency').checked);
-  refresh();
+  syncOpenings();
 }
 async function loadCarGlb(url, name) {
   if (glbLoading) return;
@@ -314,9 +343,10 @@ async function loadCarGlb(url, name) {
     await importedCar.load(url, (event) => {
       $('vehicleVisualStatus').textContent = `Loading ${name}: ${(event.loaded / 1048576).toFixed(1)} MB`;
     });
+    if (importedCar.bindings) $('inspectionTransparency').checked = true;
     selectVisual('glb');
     $('vehicleVisualStatus').textContent =
-      `${name}: supplied geometry loaded. Static vehicle; alignment and numeric ergonomics are uncalibrated estimates.`;
+      `${name}: ${importedCar.bindingStatus}`;
   } catch (error) {
     $('vehicleVisualStatus').textContent =
       `GLB load failed: ${error.message}. Choose Open local GLB or explicitly select the parametric model.`;
@@ -333,7 +363,7 @@ $('vehicleVisual').onchange = () => {
   } else {
     selectVisual($('vehicleVisual').value);
     $('vehicleVisualStatus').textContent = glbMode
-      ? 'Supplied GLB: static geometry; alignment and metrics are uncalibrated estimates.'
+      ? `Supplied GLB: ${importedCar.bindingStatus} Alignment and metrics are uncalibrated estimates.`
       : 'Parametric estimate model selected explicitly. Replay articulates this model, not the supplied GLB.';
   }
 };
@@ -626,7 +656,12 @@ $('exportPng').onclick = () => canvas.toBlob((b) => download(b, `ex60_ergo_${man
 $('exportPose').onclick = () => {
   const r = car.update(state, manikin);
   const pose = { vehicle: spec.meta.model, manikin, time_s: timeline ? tlTime : null, adjustments: state,
-    visual_openings: Object.fromEntries(Object.entries(car.openings).map(([id, opening]) => [id, opening.open])),
+    visual_model: glbMode ? importedCar.bindings ? 'local_glb_geometry_estimates' : 'unmatched_static_glb' : 'parametric_estimates',
+    geometry_profile: spec.meta.geometry_profile,
+    geometry_confidence: 'estimate',
+    geometry_assumptions: glbMode && importedCar.bindings ? spec.imported_vehicle.value.ergonomics.note : null,
+    visual_openings: Object.fromEntries(Object.entries(car.openings).map(([id, opening]) =>
+      [id, glbMode ? importedCar.openingIsOpen(id) : opening.open])),
     driver_profile: structuredClone(spec.manikins[manikin]),
     h_point: r.H, eye_point: r.eye, wheel_center: r.wc, metrics: r.metrics, flags: r.flags };
   download(new Blob([JSON.stringify(pose, null, 2)], { type: 'application/json' }), `ex60_pose_${manikin}${stamp()}.json`);
@@ -648,13 +683,18 @@ function showMetrics(m, f) {
     const cls = flag ? (f[flag] ? 'bad' : 'ok') : '';
     return `<tr class="${cls}"><td>${label}</td><td class="v">${Number.isFinite(m[k]) ? m[k].toFixed(1) : '–'} ${u}</td></tr>`;
   }).join('');
-  $('metrics').innerHTML = `<div class="title">Ergo metrics · ${spec.manikins[manikin].label}</div>${glbMode ? '<div class="muted">Parametric estimates only; not measured from the displayed GLB. The imported car remains static.</div>' : ''}${car.hasOpenPanels ? '<div class="muted">Closed-vehicle metrics (visual panels are open).</div>' : ''}<table>${rows}</table>`;
+  const warning = glbMode ? importedCar.bindings
+    ? 'GLB-aligned geometry estimates. H-point, pedal, roof, mechanisms and human dimensions are unvalidated; no compliance or collision certification.'
+    : 'Unmatched GLB: parametric estimates only, not aligned to the displayed geometry.' : '';
+  $('metrics').innerHTML = `<div class="title">Ergo metrics · ${spec.manikins[manikin].label}</div>${warning ? `<div class="muted">${warning}</div>` : ''}${(glbMode ? importedCar.hasOpenPanels : car.hasOpenPanels) ? '<div class="muted">Closed-vehicle metrics (visual panels are open; mirror views/sightlines disabled).</div>' : ''}<table>${rows}</table>`;
 }
 
 function refresh() {
   const r = car.update(state, manikin);
+  if (glbMode) importedCar.update(state);
   syncSliders();
   showMetrics(r.metrics, r.flags);
+  if (activeCamera === 'eye') setCam('eye');
 }
 
 // provenance summary
@@ -676,6 +716,9 @@ function resize() {
 
 function renderMirrorInsets(w, h) {
   const labels = [];
+  const importedMirrors = glbMode && importedCar.bindings ? Object.values(importedCar.bindings.mirrors) : [];
+  const importedVisibility = importedMirrors.map((mirror) => mirror.visible);
+  importedMirrors.forEach((mirror) => { mirror.visible = false; });
   const order = ['left', 'interior', 'right'];
   const pw = Math.min(260, w / 3.6), gap = 12;
   const x0 = (w - (pw * 3 + gap * 2)) / 2;
@@ -703,6 +746,7 @@ function renderMirrorInsets(w, h) {
   });
   car.layers.sightlines.visible = sightlinesVisible;
   car.layers.mirrors.visible = mirrorsVisible;
+  importedMirrors.forEach((mirror, i) => { mirror.visible = importedVisibility[i]; });
   $('pipLabels').innerHTML = labels.join('');
 }
 
@@ -721,7 +765,8 @@ function frame(now) {
   renderer.setScissorTest(false);
   renderer.setViewport(0, 0, w, h);
   renderer.render(scene, camera);
-  if ($('mirrorPip').checked && !car.hasOpenPanels) {
+  if ($('mirrorPip').checked && !(glbMode ? importedCar.hasOpenPanels : car.hasOpenPanels) &&
+    (!glbMode || importedCar.bindings)) {
     renderer.setScissorTest(true);
     renderMirrorInsets(w, h);
     renderer.setScissorTest(false);
@@ -751,7 +796,6 @@ function applyLayoutMode() {
   setMetrics(false);
   if (compactQuery.matches) {
     $('driverMenu').open = false;
-    $('mirrorPip').checked = false;
   } else $('driverMenu').open = true;
 }
 compactQuery.addEventListener('change', applyLayoutMode);
@@ -768,4 +812,4 @@ if (defaultLocalGlb) {
 }
 setCam('iso');
 requestAnimationFrame(frame);
-window.ergo = { spec, car, K, camera, controls, setCam, importedCar, get glbMode() { return glbMode; }, get manikin() { return manikin; }, get state() { return state; }, get timeline() { return timeline; } };
+window.ergo = { get spec() { return spec; }, car, K, camera, controls, setCam, importedCar, get glbMode() { return glbMode; }, get manikin() { return manikin; }, get state() { return state; }, get timeline() { return timeline; } };

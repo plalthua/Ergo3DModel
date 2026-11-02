@@ -12,7 +12,7 @@ import webbrowser
 from pathlib import Path
 
 from . import report as rep
-from .geometry import Adjustments, ergo_flags, ergo_metrics
+from .geometry import Adjustments, ergo_flags, ergo_metrics, geometry_profile
 from .log_sync import build_timeline, extract_channels, load_json, merge
 from .sample_logs import generate
 
@@ -49,9 +49,11 @@ def cmd_sync(a) -> int:
 
 
 def cmd_report(a) -> int:
-    spec, tl = load_json(a.spec), load_json(a.timeline)
+    spec, tl = geometry_profile(load_json(a.spec), a.geometry), load_json(a.timeline)
     rows = rep.evaluate(spec, tl, a.manikin)
-    base = a.out or os.path.join(ROOT, "reports", os.path.splitext(os.path.basename(a.timeline))[0] + f"_{a.manikin}")
+    profile_suffix = "_local_glb" if a.geometry == "local_glb" else ""
+    base = a.out or os.path.join(ROOT, "reports",
+                                os.path.splitext(os.path.basename(a.timeline))[0] + f"_{a.manikin}{profile_suffix}")
     os.makedirs(os.path.dirname(base), exist_ok=True)
     rep.write_csv(base + ".csv", rows)
     summary = rep.summarize(spec, tl, rows, a.manikin)
@@ -63,7 +65,8 @@ def cmd_report(a) -> int:
 
 
 def cmd_design(a) -> int:
-    spec = load_json(a.spec)
+    spec = geometry_profile(load_json(a.spec), a.geometry)
+    print(f"Geometry profile: {a.geometry} (estimated; not validated ergonomic calibration)")
     for mk in spec["manikins"]:
         m = ergo_metrics(spec, Adjustments.design(spec), mk)
         f = ergo_flags(spec, m)
@@ -134,9 +137,11 @@ def main(argv=None) -> int:
     r.add_argument("timeline")
     r.add_argument("--manikin", default="p50_male")
     r.add_argument("-o", "--out", help="output path without extension")
+    r.add_argument("--geometry", choices=("parametric", "local_glb"), default="parametric")
     r.set_defaults(fn=cmd_report)
 
     d = sub.add_parser("design", help="print ergo metrics at the design position for all manikins")
+    d.add_argument("--geometry", choices=("parametric", "local_glb"), default="parametric")
     d.set_defaults(fn=cmd_design)
 
     g = sub.add_parser("sample", help="generate synthetic test-drive logs")

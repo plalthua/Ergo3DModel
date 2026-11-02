@@ -83,8 +83,8 @@ def build_html(root: Path) -> str:
     app = replace_once(app, "const SPEC_URL = '../data/ex60_spec.json';", "")
     app = replace_once(app, "const SAMPLE_URL = '../data/timelines/sample_timeline.json';", "")
     app = replace_once(
-        app, "const spec = await (await fetch(SPEC_URL)).json();",
-        "const spec = JSON.parse(document.getElementById('embedded-spec').textContent);",
+        app, "const baselineSpec = await (await fetch(SPEC_URL)).json();",
+        "const baselineSpec = JSON.parse(document.getElementById('embedded-spec').textContent);",
     )
     app = replace_once(
         app,

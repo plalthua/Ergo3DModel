@@ -1,66 +1,342 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Local GLB replacement test</title></head>
+<head><meta charset="utf-8"><title>GLB articulation and occupant alignment regression</title>
+<script type="importmap">{"imports":{"three":"../viewer/vendor/three.module.js","three/addons/":"../viewer/vendor/addons/"}}</script>
+</head>
 <body>
 <pre id="result">RUNNING (requires the private local GLB)</pre>
-<iframe id="viewer" src="../viewer/index.html" style="width:1200px;height:900px"></iframe>
+<iframe id="viewer" src="../viewer/index.html" style="width:1440px;height:1000px"></iframe>
 <script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const frame = document.getElementById('viewer');
 const waitFor = async (check) => {
   for (let i = 0; i < 1200 && !check(); i++) await new Promise((resolve) => setTimeout(resolve, 50));
-  assert(check(), 'Timed out waiting for the local supplied GLB');
+  assert(check(), 'Timed out waiting for the supplied GLB');
 };
 try {
   await waitFor(() => frame.contentWindow?.ergo?.importedCar.model);
   const win = frame.contentWindow, doc = frame.contentDocument, e = win.ergo;
-  const get = (id) => doc.getElementById(id);
-  assert(e.glbMode, 'Source viewer must default to the supplied GLB');
-  for (const layer of ['body', 'body_roof', 'wheels', 'body_glazing', 'interior', 'seat', 'steering', 'mirrors', 'manikin']) {
-    assert(!e.car.layers[layer].visible, `Old ${layer} layer must be hidden`);
+  win.addEventListener('error', (event) => {
+    document.getElementById('result').textContent = `FAIL: Viewer error: ${event.message}`;
+  });
+  win.addEventListener('unhandledrejection', (event) => {
+    document.getElementById('result').textContent = `FAIL: Viewer rejection: ${event.reason?.stack || event.reason}`;
+  });
+  const get = (id) => doc.getElementById(id), rig = e.importedCar.bindings;
+  assert(e.glbMode && rig, 'Expected supplied-asset rig');
+  assert(e.spec.meta.geometry_profile === 'local_glb', 'GLB must select the aligned estimate profile');
+  for (const layer of ['body', 'wheels', 'interior', 'seat', 'steering', 'mirrors']) {
+    assert(!e.car.layers[layer].visible, `Generated ${layer} must remain hidden`);
   }
-  assert(e.car.layers.imported_vehicle.visible, 'Imported geometry must be visible');
-  let meshes = 0;
-  e.importedCar.model.traverse((object) => { if (object.isMesh) meshes++; });
-  assert(meshes > 0, 'Imported scene must contain meshes');
-  for (const id of ['exportGlb', 'openAllDoors', 'closeAllDoors', 'mirrorPip']) {
-    assert(get(id).disabled, `${id} must not imply validated articulation/export`);
+  assert(e.car.layers.manikin.visible && e.car.layers.markers.visible, 'Aligned human must be visible');
+  assert(e.car.layers.sightlines.visible, 'Mirror reference lines must start visible');
+  const zoneToggle = [...get('toggles').querySelectorAll('label')]
+    .find((label) => label.textContent.trim() === 'R46 ground zones').querySelector('input');
+  assert(zoneToggle.checked && e.car.layers.r46_zones.visible, 'R46 zones must start checked and visible');
+  assert(get('mirrorPip').checked && !get('mirrorPip').disabled, 'Mirror insets must start checked and enabled');
+  const nextRender = () => new Promise((resolve) => setTimeout(resolve, 100));
+  get('mirrorPip').checked = false;
+  assert(Object.keys(e.car.lines).length === 3 && !e.car.lines.cluster_top && !e.car.lines.cluster_bottom,
+    'Only mirror rays should remain; remove red display lines');
+  assert(e.car.layers.reference_ground.visible, 'Outside ground must remain visible');
+  assert(!e.car.layers.rear_references, 'Removed rear-reference layer must not exist');
+  for (const id of ['left', 'right']) {
+    assert(!e.car.root.getObjectByName(`${id}_rear_reference_surface`) &&
+      !e.car.root.getObjectByName(`${id}_rear_reference_label`), 'Removed rear reference must not exist');
   }
-  get('inspectionTransparency').checked = true;
-  get('inspectionTransparency').dispatchEvent(new win.Event('change'));
-  assert([...e.importedCar.materials.keys()].every((material) => material.opacity <= .18),
-    'Inspection transparency must affect the imported materials');
+  assert(!doc.querySelector('[data-cam="rearReferences"]'), 'Removed reference camera must not exist');
+  assert(get('exportGlb').disabled, 'Private geometry must not be exportable');
+  const unmatched = new e.importedCar.constructor({ layer: () => new THREE.Group() }, e.spec.imported_vehicle.value);
+  assert(unmatched.bindArticulation(new THREE.Group()) === null &&
+    unmatched.bindingStatus.includes('signature not matched'), 'Unmatched assets must remain explicitly unbound');
+  const original = await new GLTFLoader().loadAsync(e.spec.imported_vehicle.value.local_url);
+  original.scene.updateMatrixWorld(true);
+  const originalMeshes = new Map(), originalTriangles = new Map(), actualTriangles = new Map();
+  original.scene.traverse((object) => { if (object.isMesh) originalMeshes.set(object.name, object); });
+  const snapshot = () => {
+    e.importedCar.model.updateMatrixWorld(true);
+    const result = new Map();
+    e.importedCar.model.traverse((object) => { if (object.isMesh) result.set(object, object.matrixWorld.toArray()); });
+    return result;
+  };
+  const under = (object, parent) => {
+    while (object) { if (object === parent) return true; object = object.parent; }
+    return false;
+  };
+  const same = (a, b) => a.every((value, i) => Math.abs(value - b[i]) < 1e-10);
+  const triangles = (indices) => {
+    const result = [];
+    for (let i = 0; i < indices.length; i += 3) result.push(indices.slice(i, i + 3).join(','));
+    return result;
+  };
+  for (const [name, object] of originalMeshes) {
+    const indices = object.geometry.index ? [...object.geometry.index.array] :
+      Array.from({ length: object.geometry.attributes.position.count }, (_, i) => i);
+    originalTriangles.set(name, triangles(indices).sort().join(';'));
+  }
+  let restVertices = 0;
+  const p = new THREE.Vector3(), expected = new THREE.Vector3();
+  const rest = snapshot();
+  for (const object of rest.keys()) {
+    const mapping = object.userData.rigSource;
+    const name = mapping?.name || object.name;
+    const source = originalMeshes.get(name);
+    assert(source, `No source for ${object.name}`);
+    const count = object.geometry.attributes.position.count;
+    for (let i = 0; i < count; i++) {
+      const sourceIndex = mapping ? mapping.vertices[i] : i;
+      p.fromBufferAttribute(object.geometry.attributes.position, i).applyMatrix4(object.matrixWorld);
+      expected.fromBufferAttribute(source.geometry.attributes.position, sourceIndex).applyMatrix4(source.matrixWorld)
+        .applyMatrix4(e.importedCar.model.matrixWorld);
+      assert(p.distanceTo(expected) < 1e-5, `Rest geometry changed: ${object.name}`);
+      for (const [key, attribute] of Object.entries(object.geometry.attributes)) {
+        const sourceAttribute = source.geometry.attributes[key];
+        for (let c = 0; c < attribute.itemSize; c++) {
+          assert(Math.abs(attribute.getComponent(i, c) - sourceAttribute.getComponent(sourceIndex, c)) < 1e-6,
+            `Rest vertex attribute changed: ${object.name}/${key}`);
+        }
+      }
+      restVertices++;
+    }
+    const indices = object.geometry.index ? [...object.geometry.index.array] :
+      Array.from({ length: count }, (_, i) => i);
+    const sourceIndices = indices.map((i) => mapping ? mapping.vertices[i] : i);
+    if (!actualTriangles.has(name)) actualTriangles.set(name, []);
+    for (const triangle of triangles(sourceIndices)) actualTriangles.get(name).push(triangle);
+  }
+  for (const [name, values] of originalTriangles) {
+    assert(actualTriangles.get(name)?.sort().join(';') === values, `Lost/duplicated triangles: ${name}`);
+  }
+  const buttonFor = (id) => [...get('openingControls').querySelectorAll('button')]
+    .find((button) => button.getAttribute('aria-label').startsWith(e.car.openings[id].label + ':'));
+  const panelCounts = {};
+  for (const [id, panel] of Object.entries(rig.panels)) {
+    const button = buttonFor(id);
+    assert(button && !button.disabled, `Opening disabled: ${id}`);
+    const pivot = panel.pivot.getWorldPosition(new THREE.Vector3());
+    const closedBounds = new THREE.Box3().setFromObject(panel.pivot);
+    button.click();
+    const opened = snapshot();
+    let moved = 0;
+    for (const [object, matrix] of rest) {
+      if (under(object, panel.pivot)) { assert(!same(matrix, opened.get(object)), `Panel attachment stayed behind: ${object.name}`); moved++; }
+      else assert(same(matrix, opened.get(object)), `Panel moved unrelated geometry: ${object.name}`);
+    }
+    assert(moved > 0 && e.importedCar.openingIsOpen(id), `Panel failed to open: ${id}`);
+    assert(pivot.distanceTo(panel.pivot.getWorldPosition(new THREE.Vector3())) < 1e-9, `Hinge moved: ${id}`);
+    const openBounds = new THREE.Box3().setFromObject(panel.pivot);
+    if (id.endsWith('left')) assert(openBounds.max.z > closedBounds.max.z, `Left panel opened inward: ${id}`);
+    if (id.endsWith('right')) assert(openBounds.min.z < closedBounds.min.z, `Right panel opened inward: ${id}`);
+    if (id === 'tailgate') assert(openBounds.max.y > closedBounds.max.y, 'Tailgate must lift upward');
+    if (id === 'frunk') assert(openBounds.max.y > closedBounds.max.y + 0.5, 'Frunk front edge must lift upward');
+    assert(get('mirrorPip').disabled && !e.car.layers.sightlines.visible, 'Open-panel optics must be disabled');
+    if (id.startsWith('front')) {
+      const mirror = rig.mirrors[id.endsWith('left') ? 'left' : 'right'];
+      assert(under(mirror, panel.pivot), `Mirror not attached to door: ${id}`);
+    }
+    button.click();
+    const closed = snapshot();
+    for (const [object, matrix] of rest) assert(same(matrix, closed.get(object)), `Panel did not close: ${object.name}`);
+    panelCounts[id] = moved;
+  }
+  get('openAllDoors').click();
+  assert(Object.values(rig.panels).every((panel) => panel.open), 'Open-all failed');
+  get('closeAllDoors').click();
+  assert(!e.importedCar.hasOpenPanels, 'Close-all failed');
+  const setChannel = (name, value) => {
+    const input = doc.querySelectorAll('#sliders input')[e.K.CHANNELS.indexOf(name)];
+    input.value = value;
+    input.dispatchEvent(new win.Event('input'));
+  };
+  const sourceToVehicle = (point) => {
+    e.car.root.updateMatrixWorld(true);
+    return e.car.root.worldToLocal(point.clone()).toArray();
+  };
+  const checkAnchors = () => {
+    e.importedCar.model.updateMatrixWorld(true);
+    const wheel = sourceToVehicle(rig.wheel.getWorldPosition(new THREE.Vector3()));
+    const hip = sourceToVehicle(rig.seat.getWorldPosition(new THREE.Vector3()));
+    const close = (actual, expected, name) => assert(actual.every((v, i) => Math.abs(v - expected[i]) < 0.001),
+      `${name}: actual=${actual}, expected=${expected}, state=${JSON.stringify(e.state)}`);
+    close(wheel, e.K.wheelCenter(e.spec, e.state), 'GLB wheel and ergonomic wheel diverged');
+    close(hip, e.K.hPoint(e.spec, e.state), 'GLB seat and human H-point diverged');
+    close(e.car.hMarker.position.toArray(), hip, 'Human H-marker not aligned');
+    close(e.car.eyeMarker.position.toArray(), e.K.eyePoint(e.spec, e.state, e.manikin), 'Human eyes not aligned');
+    const eye = e.K.eyePoint(e.spec, e.state, e.manikin);
+    for (const id of e.K.MIRRORS) {
+      const c = e.spec.mirrors[id].glass_center, center = [c.x, c.y, c.z];
+      const ray = e.K.mirrorReflectedDir(e.spec, e.state, e.manikin, id);
+      const groundDistance = ray[2] < 0 ? (e.car.r46[0].position.z - center[2]) / ray[2] : Infinity;
+      const limit = e.spec.mirror_view_reference.value.max_distance_mm;
+      const distance = groundDistance > 0 ? Math.min(groundDistance, limit) : limit;
+      const reference = e.K.add(center, e.K.scale(ray, distance));
+      assert(!e.car.root.getObjectByName(`mirror_${id}_external_view_reference`), 'Short reference dots must be removed');
+      const positions = e.car.lines[id].geometry.attributes.position;
+      for (const [i, expected] of [eye, center, reference].entries()) {
+        close(new THREE.Vector3().fromBufferAttribute(positions, i).toArray(), expected.map(Math.fround),
+          `Thin mirror line mismatch: ${id}/${i}`);
+      }
+      assert(e.car.lines[id].material.linewidth === 1, `Mirror line must remain thin: ${id}`);
+      assert(e.car.lines[id].material.color.getHex() === 0x33dd77, `Mirror rays must not turn red: ${id}`);
+      if (groundDistance > 0 && groundDistance <= limit) {
+        assert(Math.abs(reference[2] - e.car.r46[0].position.z) < 1e-8, 'Downward ray must reach the ground-zone plane');
+      }
+    }
+  };
+  checkAnchors();
+  const design = e.K.designState(e.spec);
+  let rejected = false;
+  try { e.importedCar.setOpening('roof', true); } catch { rejected = true; }
+  assert(rejected, 'Unsupported openings must fail explicitly');
+  rejected = false;
+  try { e.importedCar.update({ ...design, seat_x: NaN }); } catch { rejected = true; }
+  assert(rejected, 'Nonfinite adjustments must fail explicitly');
+  for (const channel of e.K.CHANNELS) {
+    const range = e.K.channelRanges(e.spec)[channel];
+    for (const value of [range.min, range.max]) {
+      setChannel(channel, value);
+      const posed = snapshot();
+      const target = channel.startsWith('seat_') ?
+        channel === 'seat_back_angle' ? rig.back : channel === 'seat_cushion_tilt' ? rig.cushion : rig.seat :
+        channel.startsWith('mirror_') ? rig.mirrors[channel.split('_')[1]] :
+        channel === 'steer_wheel_angle' ? rig.wheel : rig.column;
+      let changed = 0;
+      for (const [object, matrix] of rest) {
+        if (under(object, target)) { if (!same(matrix, posed.get(object))) changed++; }
+        else assert(same(matrix, posed.get(object)), `Adjustment moved unrelated geometry: ${channel}/${object.name}`);
+      }
+      assert(changed > 0, `Adjustment has no moving geometry: ${channel}`);
+      checkAnchors();
+      setChannel(channel, design[channel]);
+    }
+  }
+  for (const id of ['left', 'right', 'interior']) {
+    const center = sourceToVehicle(rig.mirrors[id].getWorldPosition(new THREE.Vector3()));
+    const expectedCenter = e.spec.mirrors[id].glass_center;
+    assert(center.every((v, i) => Math.abs(v - [expectedCenter.x, expectedCenter.y, expectedCenter.z][i]) < 1e-6),
+      `Optical centre not aligned: ${id}`);
+    const normal = e.K.mirrorNormal(e.spec.mirrors[id].yaw_deg.design, e.spec.mirrors[id].pitch_deg.design);
+    const restNormal = new THREE.Vector3(normal[0], normal[2], -normal[1]);
+    setChannel(`mirror_${id}_yaw`, e.spec.mirrors[id].yaw_deg.max);
+    const posed = restNormal.clone().applyQuaternion(rig.mirrors[id].quaternion);
+    const target = e.K.mirrorNormal(e.state[`mirror_${id}_yaw`], e.state[`mirror_${id}_pitch`]);
+    assert(posed.distanceTo(new THREE.Vector3(target[0], target[2], -target[1])) < 1e-9, `Optical normal mismatch: ${id}`);
+    const glass = rig.mirrors[id].children.find((object) => object.userData.rigSource?.name.includes('mirror_mirror'));
+    assert(glass, `Missing bound glass surface: ${id}`);
+    e.car.root.updateMatrixWorld(true);
+    const average = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const restA = new THREE.Vector3(), restB = new THREE.Vector3(), restC = new THREE.Vector3();
+    const inverse = e.car.root.matrixWorld.clone().invert();
+    const restMatrix = new THREE.Matrix4().fromArray(rest.get(glass));
+    const index = glass.geometry.index, position = glass.geometry.attributes.position;
+    for (let i = 0; i < index.count; i += 3) {
+      const vertex = (out, vertexIndex) => out.fromBufferAttribute(position, vertexIndex)
+        .applyMatrix4(glass.matrixWorld).applyMatrix4(inverse);
+      vertex(a, index.getX(i)); vertex(b, index.getX(i + 1)); vertex(c, index.getX(i + 2));
+      const face = b.sub(a).cross(c.sub(a));
+      const restVertex = (out, vertexIndex) => out.fromBufferAttribute(position, vertexIndex)
+        .applyMatrix4(restMatrix).applyMatrix4(inverse);
+      restVertex(restA, index.getX(i)); restVertex(restB, index.getX(i + 1)); restVertex(restC, index.getX(i + 2));
+      if (restB.sub(restA).cross(restC.sub(restA)).x < 0) face.negate();
+      average.add(face);
+    }
+    average.normalize();
+    assert(average.distanceTo(new THREE.Vector3(...target)) < 1e-5,
+      `Displayed glass average normal diverges from optical model: ${id}: actual=${average.toArray()}, expected=${target}`);
+    setChannel(`mirror_${id}_yaw`, design[`mirror_${id}_yaw`]);
+  }
+  get('autoMirrors').click();
+  for (const id of ['left', 'right', 'interior']) {
+    const metrics = e.K.ergoMetrics(e.spec, e.state, e.manikin);
+    assert(metrics[`mirror_${id}_view_error_deg`] < 1e-7, `Auto-mirror optical target failed: ${id}`);
+  }
+  get('resetDesign').click();
+  get('mirrorPip').checked = true;
+  await waitFor(() => get('pipLabels').children.length === 3);
+  assert(get('pipLabels').children.length === 3, 'Closed-vehicle GLB mirror views must render');
+  frame.style.width = '800px';
+  await nextRender();
+  assert(win.matchMedia('(max-width: 900px)').matches && get('mirrorPip').checked &&
+    get('pipLabels').children.length === 3, 'Compact layout must keep default mirror views enabled');
+  frame.style.width = '1440px';
+  await nextRender();
+  assert(Object.values(rig.mirrors).every((mirror) => mirror.visible), 'Mirror rendering must restore glass visibility');
+  buttonFor('front_left').click();
+  assert(get('mirrorPip').disabled && get('pipLabels').children.length === 0, 'Open-door mirror views must be suppressed');
+  buttonFor('front_left').click();
+  get('mirrorPip').checked = false;
+  const metrics = Object.fromEntries(Object.keys(e.spec.manikins).map((id) =>
+    [id, e.K.ergoMetrics(e.spec, e.state, id)]));
+  const visual = get('vehicleVisual');
+  visual.value = 'parametric'; visual.dispatchEvent(new win.Event('change'));
+  assert(e.spec.meta.geometry_profile === 'parametric' && !get('exportGlb').disabled, 'Parametric mode not restored');
+  assert(zoneToggle.checked && e.car.layers.r46_zones.visible && get('mirrorPip').checked,
+    'Parametric mode must enable ground zones and mirror insets');
+  const baseline = Object.fromEntries(Object.keys(e.spec.manikins).map((id) =>
+    [id, e.K.ergoMetrics(e.spec, e.state, id)]));
+  visual.value = 'glb'; visual.dispatchEvent(new win.Event('change'));
+  assert(zoneToggle.checked && e.car.layers.r46_zones.visible && get('mirrorPip').checked,
+    'GLB round trip must enable ground zones and mirror insets');
+  get('mirrorPip').checked = false;
+  const roundTripMetrics = Object.fromEntries(Object.keys(e.spec.manikins).map((id) =>
+    [id, e.K.ergoMetrics(e.spec, e.state, id)]));
+  assert(JSON.stringify(metrics) === JSON.stringify(roundTripMetrics), 'Mode round trip changed profile metrics');
   get('inspectionTransparency').checked = false;
   get('inspectionTransparency').dispatchEvent(new win.Event('change'));
-  assert([...e.importedCar.materials].every(([material, original]) => material.opacity === original.opacity),
-    'Material opacity must restore exactly');
-  const transforms = [];
-  e.importedCar.model.updateMatrixWorld(true);
-  e.importedCar.model.traverse((object) => transforms.push(object.matrix.toArray()));
-  const allMetrics = () => Object.fromEntries(Object.keys(e.spec.manikins).map((id) =>
-    [id, e.K.ergoMetrics(e.spec, e.state, id)]));
-  const initialMetrics = allMetrics();
-  const visual = get('vehicleVisual');
-  visual.value = 'parametric';
-  visual.dispatchEvent(new win.Event('change'));
-  assert(e.car.layers.body.visible && !e.car.layers.imported_vehicle.visible, 'Explicit parametric switch failed');
-  assert(!get('exportGlb').disabled, 'Parametric export must remain available');
-  assert(JSON.stringify(allMetrics()) === JSON.stringify(initialMetrics),
-    'Visual replacement must not change numeric ergonomics');
-  visual.value = 'glb';
-  visual.dispatchEvent(new win.Event('change'));
+  assert([...e.importedCar.materials].every(([material, rest]) => material.opacity === rest.opacity),
+    'Material opacity failed to restore');
+  get('inspectionTransparency').checked = true;
+  get('inspectionTransparency').dispatchEvent(new win.Event('change'));
+  const doorOpacity = e.spec.visual_reconstruction.inspection_transparency.value.door_opacity;
+  assert([...e.importedCar.materials.values()].some((rest) => rest.sideDoor), 'No side-door materials isolated');
+  for (const [material, rest] of e.importedCar.materials) {
+    if (rest.sideDoor) {
+      assert(material.opacity === Math.min(rest.opacity, doorOpacity) && material.transparent && !material.depthWrite,
+        'Side-door transparency failed');
+    } else {
+      assert(material.opacity === rest.opacity && material.transparent === rest.transparent &&
+        material.depthWrite === rest.depthWrite, 'Inspection changed a non-door material');
+    }
+  }
   get('loadSample').click();
   await waitFor(() => e.timeline);
-  get('scrub').value = e.timeline.t.at(-1);
-  get('scrub').dispatchEvent(new win.Event('input'));
-  const replayTransforms = [];
-  e.importedCar.model.updateMatrixWorld(true);
-  e.importedCar.model.traverse((object) => replayTransforms.push(object.matrix.toArray()));
-  assert(JSON.stringify(transforms) === JSON.stringify(replayTransforms), 'Unbound GLB must stay static during replay');
-  assert(!e.car.layers.seat.visible, 'Replay must not resurrect the old car');
-  assert(get('metrics').textContent.includes('not measured from the displayed GLB'), 'Metrics disclaimer missing');
-  document.getElementById('result').textContent = `PASS: ${meshes} meshes; complete visual replacement, controls, materials, unchanged metrics and static replay`;
+  const flags = {};
+  for (const [i, t] of e.timeline.t.entries()) {
+    get('scrub').value = t; get('scrub').dispatchEvent(new win.Event('input'));
+    checkAnchors();
+    for (const id of Object.keys(e.spec.manikins)) {
+      if (!flags[id]) flags[id] = [];
+      if (Object.values(e.K.ergoFlags(e.spec, e.K.ergoMetrics(e.spec, e.state, id))).some(Boolean)) flags[id].push(i);
+    }
+  }
+  get('resetDesign').click();
+  checkAnchors();
+  assert(get('metrics').textContent.includes('GLB-aligned geometry estimates'), 'Missing estimate warning');
+  for (const id of Object.keys(e.spec.manikins)) {
+    get('manikin').value = id;
+    get('manikin').dispatchEvent(new win.Event('change'));
+    assert(e.manikin === id, `Human selection failed: ${id}`);
+    checkAnchors();
+  }
+  get('manikin').value = 'p50_male';
+  get('manikin').dispatchEvent(new win.Event('change'));
+  e.setCam('side');
+  if (new URLSearchParams(location.search).has('open')) {
+    get('openAllDoors').click();
+    get('inspectionTransparency').checked = false;
+    get('inspectionTransparency').dispatchEvent(new win.Event('change'));
+    e.setCam('iso');
+  }
+  document.getElementById('result').dataset.status = 'pass';
+  document.getElementById('result').textContent = JSON.stringify({
+    status: 'PASS', meshes: rest.size, restVertices, panels: panelCounts,
+    allChannels: e.K.CHANNELS.length, metrics, baseline, flaggedFrames: flags,
+    confidence: 'estimate', calibration: 'unvalidated geometry-derived alignment',
+  });
 } catch (error) {
+  document.getElementById('result').dataset.status = 'fail';
   document.getElementById('result').textContent = `FAIL: ${error.stack || error.message}`;
 }
 </script>

@@ -72,7 +72,8 @@ MOBILE AND PHONE BROWSERS
   <= 520 px) the controls become a drawer opened by the "Show controls"
   button, the metrics and driver body profile menus are collapsed by
   default, and the 3D scene fills the screen. One finger orbits; two
-  fingers pinch-zoom and pan. Mirror insets start switched off on phones.
+  fingers pinch-zoom and pan. Mirror insets and R46 ground zones start
+  enabled on phones too; turn mirror insets off if rendering is slow.
 - TESTED: Chrome 3D emulation of 390x844, 360x740 and 844x390 touch
   viewports (plus 1440x1000 desktop) using the generated HTML. NOT tested
   on physical iOS/Safari or Android devices; real-device WebGL speed and

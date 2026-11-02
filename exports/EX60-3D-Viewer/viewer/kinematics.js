@@ -4,6 +4,24 @@
 
 export const MIRRORS = ['left', 'right', 'interior'];
 
+export function geometryProfile(spec, name = 'parametric') {
+  if (!['parametric', 'local_glb'].includes(name)) throw new Error(`Unknown geometry profile: ${name}`);
+  const result = structuredClone(spec);
+  if (name === 'local_glb') {
+    const merge = (target, changes) => {
+      for (const [key, value] of Object.entries(changes)) {
+        if (value !== null && typeof value === 'object' && !Array.isArray(value) &&
+          target[key] !== null && typeof target[key] === 'object' && !Array.isArray(target[key])) {
+          merge(target[key], value);
+        } else target[key] = structuredClone(value);
+      }
+    };
+    merge(result, spec.imported_vehicle.value.ergonomics.overrides);
+  }
+  result.meta.geometry_profile = name;
+  return result;
+}
+
 export const CHANNELS = [
   'seat_x', 'seat_z', 'seat_back_angle', 'seat_cushion_tilt',
   'steer_tilt', 'steer_telescope', 'steer_wheel_angle',

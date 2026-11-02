@@ -14,7 +14,7 @@ const wait = () => new Promise((resolve) => setTimeout(resolve, 100));
 try {
   const query = new URLSearchParams(location.search);
   const targets = {
-    source: '../viewer/index.html',
+    source: '../viewer/index.html?model=parametric',
     standalone: '../exports/EX60-3D-Viewer.html',
     desktop: '../exports/EX60-3D-Viewer/viewer/index.html',
     teams: '../exports/EX60-Teams-Web/index.html',
@@ -33,7 +33,7 @@ try {
       doc.getElementById('panel').classList.contains('open'), 'Mobile controls drawer failed to open');
   }
   const buttons = [...doc.querySelectorAll('#openingControls button')];
-  assert(buttons.length === 5, 'Expected four door controls and a tailgate control');
+  assert(buttons.length === 6, 'Expected four door controls, tailgate and frunk controls');
   const vertex = (mesh, index = 0) => {
     car.root.updateMatrixWorld(true);
     return new THREE.Vector3().fromBufferAttribute(mesh.geometry.getAttribute('position'), index)
@@ -160,9 +160,14 @@ try {
       assert(actual.distanceTo(expected) < 1e-5,
         `${id}: detached or incorrectly transformed ${mesh.name}: ${actual.toArray()} expected ${expected.toArray()}`);
     }
-    const skin = car.root.getObjectByName(id === 'tailgate' ? 'tailgate' : `${id}_skin`);
+    const skin = car.root.getObjectByName(id === 'frunk' ? 'sculpted_hood' : id === 'tailgate' ? 'tailgate' : `${id}_skin`);
     const before = vertex(skin);
-    if (id === 'tailgate') {
+    if (id === 'frunk') {
+      assert(before.z > points[meshes.indexOf(skin)].z + 500, 'Frunk front edge must lift upward');
+      const fixedNose = car.root.getObjectByName('nose_emblem_ring');
+      assert(fixedNose.matrixWorld.elements.every((v, j) => Math.abs(v - closed.get(fixedNose).elements[j]) < 1e-8),
+        'Frunk moved the fixed front fascia');
+    } else if (id === 'tailgate') {
       assert(before.z > spec.visual_reconstruction.openings.value.tailgate_bottom_z, 'Tailgate must lift upward');
     } else {
       const end = vertex(skin, skin.geometry.getAttribute('position').count - 1);

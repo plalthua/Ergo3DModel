@@ -10,7 +10,7 @@ $single = Join-Path $exports 'EX60-3D-Viewer.html'
 $desktop = Join-Path $exports 'EX60-3D-Viewer'
 $teams = Join-Path $exports 'EX60-Teams-Web'
 
-& python (Join-Path $PSScriptRoot 'build_shareable_html.py') --out $single
+& uv run --no-project python (Join-Path $PSScriptRoot 'build_shareable_html.py') --out $single
 if ($LASTEXITCODE) { throw 'build_shareable_html.py failed' }
 
 Copy-Item $single (Join-Path $desktop 'EX60-3D-Viewer.html') -Force
